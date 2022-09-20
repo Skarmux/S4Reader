@@ -170,42 +170,38 @@ pub fn decompress<T: Read, U: Write>(reader: &mut T, writer: &mut U) -> Result<(
                 code_table.reset();
 
                 // update huffman table
-                let mut new_index: [u8;16] = [0;16];
-                let mut new_value: [u8;16] = [0;16];
+                let mut base = 0;
+                let mut length: i32 = 0;
 
-                let base = 0;
-                let length = 0;
-
-                for i in 0..16 {
+                for (i, v) in huffman_table.iter_mut() {
+                    
                     length -= 1;
-                    let bit_value = 0;
+
                     loop {
                         length += 1;
                         reader.read_exact(&mut buf);
-                        bit_value = LittleEndian::read_i32(&buf);
+                        let bit_value = LittleEndian::read_i32(&buf);
                         if bit_value != 0 {
                             break;
                         }
                     }
 
-                    new_index[i] = length;
-                    new_value[i] = base;
+                    *i = length;
+                    *v = base;
 
                     base += (1 << length);
                 }
-
-                huffman_table[0] = new_index;
-                huffman_table[1] = new_value;
             }
             273 => {
                 // end-of-stream code word
-                let length_remaining = reader.stream_position() - encrypted_data_length;
+                // let writer_pos = writer.stream_position();
+                // let length_remaining = reader.stream_position() - encrypted_data_length;
 
-                if length_remaining > 2 {
-                    // reset bit buffer
-                } else {
-                    break;
-                }
+                // if length_remaining > 2 {
+                //     // reset bit buffer
+                // } else {
+                //     break;
+                // }
             }
             _ => panic!("Bad dictionary entry!")
         }
