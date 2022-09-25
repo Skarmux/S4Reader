@@ -1,142 +1,111 @@
 
 use std::io::prelude::*;
 use std::io::Error;
+use std::ops::Index;
 
 use byteorder::{ByteOrder, LittleEndian};
 
 // https://www.rfc-editor.org/rfc/rfc1951
+// https://www.rfc-editor.org/rfc/rfc1952
 
-// const LZ_DISTANCE_TABLE: [[u8;8];2] = [
-//     [0, 0, 1, 2, 3, 4, 5, 6],
-//     [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40]
-// ];
+#[derive(Default, Clone, Copy)]
+struct Item<T: Copy, U: Copy> { length: T, value: U }
 
-// const LZ_LENGTH_TABLE: [[u16;8];2] = [
-//     [1, 2, 3, 4, 5, 6, 7, 8],
-//     [0x008, 0x00A, 0x00E, 0x016, 0x026, 0x046, 0x086, 0x106]
-// ];
-
-// let mut huffman_table: [[u8;16];2] = [
-//     [2, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5],
-//     [0x00, 0x04, 0x0C, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74, 0x84, 0x94, 0xA4, 0xB4, 0xD4, 0xF4]
-// ];
-
-const LZ_DISTANCE_TABLE: [(u8,u8);8] = [
-    (0, 0x00),
-    (0, 0x01),
-    (1, 0x02),
-    (2, 0x04),
-    (3, 0x08),
-    (4, 0x10),
-    (5, 0x20),
-    (6, 0x40)
+static LZ_DISTANCE_TABLE: [Item<u8,u8>;8] = [
+    Item{ length:0, value:0x00 },
+    Item{ length:0, value:0x01 },
+    Item{ length:1, value:0x02 },
+    Item{ length:2, value:0x04 },
+    Item{ length:3, value:0x08 },
+    Item{ length:4, value:0x10 },
+    Item{ length:5, value:0x20 },
+    Item{ length:6, value:0x40 }
 ];
 
-const LZ_LENGTH_TABLE: [(u8,u16);8] = [
-    (1, 0x008),
-    (2, 0x00A),
-    (3, 0x00E),
-    (4, 0x016),
-    (5, 0x026),
-    (6, 0x046),
-    (7, 0x086),
-    (8, 0x106)
+static LZ_LENGTH_TABLE: [Item<u8,u16>;8] = [
+    Item{ length:1, value:0x008 },
+    Item{ length:2, value:0x00A },
+    Item{ length:3, value:0x00E },
+    Item{ length:4, value:0x016 },
+    Item{ length:5, value:0x026 },
+    Item{ length:6, value:0x046 },
+    Item{ length:7, value:0x086 },
+    Item{ length:8, value:0x106 }
 ];
 
-struct CodeTable {
-    table: [u32;274],
-    indices: [u32;274],
-    quantities: [i32;274],
+static HUFFMAN_TABLE: [Item<u32,u8>;16] = [
+    Item{ length:2, value:0x00 },
+    Item{ length:3, value:0x04 },
+    Item{ length:3, value:0x0C },
+    Item{ length:4, value:0x14 },
+    Item{ length:4, value:0x24 },
+    Item{ length:4, value:0x34 },
+    Item{ length:4, value:0x44 },
+    Item{ length:4, value:0x54 },
+    Item{ length:4, value:0x64 },
+    Item{ length:4, value:0x74 },
+    Item{ length:4, value:0x84 },
+    Item{ length:4, value:0x94 },
+    Item{ length:4, value:0xA4 },
+    Item{ length:5, value:0xB4 },
+    Item{ length:5, value:0xD4 },
+    Item{ length:5, value:0xF4 }
+];
+
+#[derive(Default, Clone, Copy)]
+struct CodeItem {
+    index: u32,
+    value: u32,
+    count: u32
 }
 
-impl CodeTable {
-    fn new() -> Self {
+fn generate_code_table() -> [CodeItem;274] {
+    let mut table: [CodeItem;274] = [Default::default();274];
 
-        let mut table: [u32;274] = [0;274];
-
-        for i in 0..16 {
-            table[i as usize] = i + 0x100;
-        }
-        
-        table[16] = 0x00;
-        table[17] = 0x20;
-        table[18] = 0x30;
-        table[19] = 0xFF;
-
-        let mut j = 20;
-        for i in 1..274 {
-            if table.iter().any(|&val| val == i) {
-                table[j] = i;
-                j += 1;
-            }
-        }
-
-        let indices = Self::new_indices(&table);
-        CodeTable { 
-            table, 
-            indices, 
-            quantities: [0;274]
-        }
-    }
-
-    fn new_indices( table: &[u32;274] ) -> [u32;274] {
-        let indices: [u32;274];
-        for i in 0..274 {
-            let index = table[i as usize] as usize;
-            indices[index] = i;
-        }
-        indices
-    }
-
-    fn word_at(&mut self, index: usize ) -> u32 {
-        let word = self.table[index];
-        self.quantities[word as usize] += 1;
-        word
-    }
-
-    fn reset(&mut self) {
-        // create new entropy encoding table
-        self.table.iter_mut().enumerate().map(|(i, &mut v)| v = i as u32 );
-
-        // sort index by quantities... to be stable we use "quantities + index" as value
-        //self.table.sort_by(|a, b| ((self.quantities[b as usize] << 16) as u32 + b) - ((self.quantities[a as usize] << 16) as u32 + a) > 0 );
-        let comparator = |&a, &b| -> std::cmp::Ordering {
-            let result =  (self.quantities[b as usize] << 16) + b as i32 - (self.quantities[a as usize] << 16) + a as i32;
-            0.cmp(&result)
+    for (index, item) in table.iter_mut().enumerate() {
+        item.index = index as u32;
+        item.value = match index {
+            0..=15 => index as u32 + 0x100,
+            16 => 0x00,
+            17 => 0x20,
+            18 => 0x30,
+            19 => 0xFF,
+            _ => (index as u32 - 19)
         };
-        self.table.sort_by(|a, b| comparator(a, b) );
-
-        // we reduce the original quantity by 2 to the impact for the next CreateCodeTableFromFrequency() call
-        for i in 0..274 {
-            self.quantities[i] = self.quantities[i] / 2;
-        }
-
-        self.indices = Self::new_indices( &self.table );
+        item.count = 0;
     }
+
+    table
+}
+
+fn reset_code_table( table: &mut [CodeItem;274] ) {
+    
+    table.iter_mut().enumerate().map(|(index, item)| item.value = index as u32 );
+
+    let mut tmp_table = table.clone();
+    tmp_table.sort_by_key(|item| item.count );
+
+    table.iter_mut().enumerate().map(|(index, item)| item.index = tmp_table[index].index );
+
+    // we reduce the original quantity by 2 to the impact for the next CreateCodeTableFromFrequency() call
+    // table.iter_mut().enumerate().map(|(index, item)| item.count = item.count / 2 );
+
+    reset_code_table_indices( table );
+}
+
+fn reset_code_table_indices( table: &mut [CodeItem;274] ) {
+    for (index, item) in table.iter_mut().enumerate() {
+        item.index = index as u32;
+    };
 }
 
 pub fn decompress<T: Read, U: Write>(reader: &mut T, writer: &mut U) -> Result<(), std::io::Error> {
 
-    let mut huffman_table: [(u32,u8);16] = [
-        (2, 0x00),
-        (3, 0x04),
-        (3, 0x0C),
-        (4, 0x14),
-        (4, 0x24),
-        (4, 0x34),
-        (4, 0x44),
-        (4, 0x54),
-        (4, 0x64),
-        (4, 0x74),
-        (4, 0x84),
-        (4, 0x94),
-        (4, 0xA4),
-        (5, 0xB4),
-        (5, 0xD4),
-        (5, 0xF4)
-    ];
+    let mut huffman_table: [Item<u32,u8>;16] = [Default::default();16];
+    
+    huffman_table.copy_from_slice(&HUFFMAN_TABLE[..]);
 
-    let mut code_table = CodeTable::new();
+    let mut code_table = generate_code_table();
 
     let mut buf: [u8;4] = [0;4];
 
@@ -148,17 +117,17 @@ pub fn decompress<T: Read, U: Write>(reader: &mut T, writer: &mut U) -> Result<(
             panic!("CodeType out of sync!");
         }
 
-        let (index, value) = huffman_table[code_type as usize];
+        let mut huffman_item = &mut huffman_table[code_type as usize];
 
-        if value > 0 {
+        if huffman_item.value > 0 {
             reader.read_exact(&mut buf);
-            index += LittleEndian::read_u32(&buf);
-            if index >= 274 {
+            huffman_item.length += LittleEndian::read_u32(&buf);
+            if huffman_item.length >= 274 {
                 panic!("CodeType out of sync!");
             }
         }
 
-        let word = code_table.word_at(index as usize);
+        let word = code_table[huffman_item.length as usize].value;
 
         // execute code word
         match word {
@@ -167,18 +136,18 @@ pub fn decompress<T: Read, U: Write>(reader: &mut T, writer: &mut U) -> Result<(
                 //output[0] = code_word; // ???
             }
             272 => {
-                code_table.reset();
+                reset_code_table( &mut code_table );
 
                 // update huffman table
                 let mut base = 0;
                 let mut length: i32 = 0;
 
-                for (i, v) in huffman_table.iter_mut() {
+                for item in huffman_table.iter_mut() {
                     
-                    length -= 1;
+                    item.length -= 1;
 
                     loop {
-                        length += 1;
+                        item.length += 1;
                         reader.read_exact(&mut buf);
                         let bit_value = LittleEndian::read_i32(&buf);
                         if bit_value != 0 {
@@ -186,10 +155,7 @@ pub fn decompress<T: Read, U: Write>(reader: &mut T, writer: &mut U) -> Result<(
                         }
                     }
 
-                    *i = length;
-                    *v = base;
-
-                    base += (1 << length);
+                    base += (1 << item.length);
                 }
             }
             273 => {
