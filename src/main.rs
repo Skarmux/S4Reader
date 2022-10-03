@@ -1,20 +1,21 @@
 #![allow(unused)]
 
+mod ara_crypt;
+mod decompress;
+
 use std::error::Error;
 
 use byteorder::ReadBytesExt;
 use byteorder::{ByteOrder, LittleEndian};
 
 use std::fs::OpenOptions;
+
 use std::io::SeekFrom;
 use std::io::prelude::*;
 use std::io::BufReader;
+use std::io;
 
-mod crypt;
-use crypt::ara_crypt::AraCrypt;
-
-mod decompress;
-use decompress::decompress::*;
+use ara_crypt::AraCrypt;
 
 #[derive(PartialEq)]
 enum Segment {
@@ -144,6 +145,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let buf_reader = BufReader::new(map_file);
 
     Map::from( buf_reader );
+
+    //decompress();
 
     Ok(())
 }
