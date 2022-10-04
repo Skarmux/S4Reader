@@ -22,15 +22,22 @@ impl<W: Write + Seek> BitWriter<W> {
         // fill cache
         self.cache |= (byte >> self.cached_bits_count);
 
-        if (self.cached_bits_count + count) >= 8 {
-            // cache is filled
-            self.inner.write(&[self.cache]);
-            // new cache with remaining bits
-            self.cache = byte << (8 - self.cached_bits_count);
-        }
+        // update count
+        self.cached_bits_count += count;
 
-        // update with number of remaining bits
-        self.cached_bits_count = (self.cached_bits_count + count) % 8;
+        if self.cached_bits_count >= 8 {
+
+            // flush cache
+            self.inner.write(&[self.cache]);
+
+            // update with number of remaining bits
+            self.cached_bits_count %= 8;
+            
+            if self.cached_bits_count > 0 {
+                // new cache with remaining bits
+                self.cache = byte << (8 - self.cached_bits_count);
+            }
+        }
         
         Ok(())
     }
@@ -57,9 +64,7 @@ impl<W: Write + Seek> BitWriter<W> {
 mod test {
 
     use super::*;
-    use std::io::{
-        BufWriter, Cursor
-    };
+    use std::io::Cursor;
 
     #[test]
     fn test_write_u8() {
@@ -69,15 +74,14 @@ mod test {
         let mut bit_writer = BitWriter::new(output_buf);
 
         bit_writer.write_u8(0b1111_0000, 4);
-        assert_eq!(bit_writer.cache, 0b1111_0000, "4 bits are added to cache");
         assert_eq!(bit_writer.cached_bits_count, 4, "4 bits in cache");
+        assert_eq!(bit_writer.cache & 0b1111_0000, 0b1111_0000, "4 bits are added to cache");
 
         bit_writer.write_u8(0b1110_0000, 3);
-        assert_eq!(bit_writer.cache, 0b1111_1110, "3 bits are added to cache");
         assert_eq!(bit_writer.cached_bits_count, 7, "7 bits in cache");
+        assert_eq!(bit_writer.cache & 0b1111_1110, 0b1111_1110, "3 bits are added to cache");
 
         bit_writer.write_u8(0b1000_0000, 1);
-        assert_eq!(bit_writer.cache, 0b0000_0000, "1 bit is added to cache");
         assert_eq!(bit_writer.cached_bits_count, 0, "0 bits in cache");
 
         assert_eq!(bit_writer.inner.into_inner(), [0b1111_1111, 0b0000_0000]);
@@ -91,10 +95,15 @@ mod test {
         let mut bit_writer = BitWriter::new(output_buf);
 
         bit_writer.write_bits(&[0b0000_1111, 0b1110_0000], 10);
-        assert_eq!(bit_writer.cache, 0b1100_0000, "2 bits are cached");
         assert_eq!(bit_writer.cached_bits_count, 2, "2 bits in cache");
+        assert_eq!(bit_writer.cache & 0b1100_0000, 0b1100_0000, "2 bits are cached");
 
         assert_eq!(bit_writer.inner.into_inner(), [0b0000_1111, 0b0000_0000]);
+    }
+
+    #[test]
+    fn test_output_overflow() {
+        // TODO
     }
 
 }

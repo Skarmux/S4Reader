@@ -108,3 +108,24 @@ impl<R: Read + Seek> BitReader<R> {
     // }
 
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_read_u8() {
+
+        let mut input: [u8;2] = [0b0000_0111, 0b0101_0101];
+        let mut input_buf = Cursor::new(input);
+        let mut bit_reader = BitReader::new(input_buf);
+
+        // least signigicant bit steht an erster stelle
+
+        let byte = bit_reader.take(3).unwrap();
+        assert_eq!(byte, 0b0000_0111);
+    }
+
+}
