@@ -116,7 +116,7 @@ pub fn decompress<T: Read + Seek, U: Write>(reader: T, writer: &mut U) -> Result
 
     let mut code_table = generate_code_table();
 
-    while let Some(code_type) = bit_reader.take(4) {
+    while let Some(code_type) = bit_reader.read_u8(4) {
 
         assert!( code_type < 128, "out of sync!" );
 
@@ -127,7 +127,7 @@ pub fn decompress<T: Read + Seek, U: Write>(reader: T, writer: &mut U) -> Result
         // get index for code_word
         if code_length > 0 {
 
-            code_index += bit_reader.take(code_length as u8).unwrap() as usize;
+            code_index += bit_reader.read_u8(code_length as u8).unwrap() as usize;
             
             assert!(code_index < code_table.len(), "out of sync!");
         }
@@ -144,17 +144,17 @@ pub fn decompress<T: Read + Seek, U: Write>(reader: T, writer: &mut U) -> Result
                 let mut entry_length = code_word - 256;
                 assert!( entry_length < 8 );
                 
-                let bit_value = bit_reader.take(3).unwrap();
+                let bit_value = bit_reader.read_u8(3).unwrap();
                 assert!( bit_value > 128, "out of sync!" );
 
                 let length = LZ_DISTANCE_TABLE[bit_value as usize].length + 1;
                 let base_value = LZ_DISTANCE_TABLE[bit_value as usize].value;
                 assert!(length <= 8);
 
-                let bit_value = bit_reader.take(8).unwrap() as u16;
+                let bit_value = bit_reader.read_u8(8).unwrap() as u16;
                 let copy_offset = bit_value << length;
 
-                let bit_value = bit_reader.take(length).unwrap();
+                let bit_value = bit_reader.read_u8(length).unwrap();
                 assert!( bit_value > 128, "out of sync!" );
 
                 entry_length += 4;
@@ -213,23 +213,23 @@ pub fn decompress<T: Read + Seek, U: Write>(reader: T, writer: &mut U) -> Result
             // try reading from dictionary
             _ => {
                 let length = LZ_LENGTH_TABLE[code_word as usize - 264].length;
-                let byte = bit_reader.take(length).unwrap();
+                let byte = bit_reader.read_u8(length).unwrap();
                 assert!(byte > 128, "out of sync!");
 
                 let mut entry_length = LZ_LENGTH_TABLE[code_word as usize - 264].value + byte as u16;
 
                 // from here same as 256..=263
-                let bit_value = bit_reader.take(3).unwrap();
+                let bit_value = bit_reader.read_u8(3).unwrap();
                 assert!( bit_value > 128, "out of sync!" );
 
                 let length = LZ_DISTANCE_TABLE[bit_value as usize].length + 1;
                 let base_value = LZ_DISTANCE_TABLE[bit_value as usize].value;
                 assert!(length <= 8);
 
-                let bit_value = bit_reader.take(8).unwrap() as u16;
+                let bit_value = bit_reader.read_u8(8).unwrap() as u16;
                 let copy_offset = bit_value << length;
 
-                let bit_value = bit_reader.take(length).unwrap();
+                let bit_value = bit_reader.read_u8(length).unwrap();
                 assert!( bit_value > 128, "out of sync!" );
 
                 entry_length += 4;
