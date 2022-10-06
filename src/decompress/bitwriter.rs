@@ -70,7 +70,7 @@ mod test {
     fn test_write_u8() {
 
         let mut output: [u8;2] = [0;2];
-        let mut output_buf = Cursor::new(output);
+        let mut output_buf = Cursor::new(&mut output[..]);
         let mut bit_writer = BitWriter::new(output_buf);
 
         bit_writer.write_u8(0b1111_0000, 4);
@@ -91,7 +91,7 @@ mod test {
     fn test_write_bits() {
 
         let mut output: [u8;2] = [0;2];
-        let mut output_buf = Cursor::new(output);
+        let mut output_buf = Cursor::new(&mut output[..]);
         let mut bit_writer = BitWriter::new(output_buf);
 
         bit_writer.write_bits(&[0b0000_1111, 0b1110_0000], 10);
