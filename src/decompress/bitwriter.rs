@@ -102,8 +102,16 @@ mod test {
     }
 
     #[test]
-    fn test_output_overflow() {
-        // TODO
+    #[should_panic]
+    fn test_write_bits_output_overflow_panic() {
+        
+        let mut output: [u8;1] = [0;1];
+        let mut output_buf = Cursor::new(&mut output[..]);
+        let mut bit_writer = BitWriter::new(output_buf);
+
+        // TODO: Trailing resides in cache without panic although output buffer is full.
+
+        bit_writer.write_bits(&[0b0000_1111, 0b1110_0000], 9);
     }
 
 }
