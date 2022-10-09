@@ -1,4 +1,4 @@
-use std::io::prelude::*;
+use std::io::{prelude::*, IntoInnerError};
 use std::io::{
     self, Write, Seek, SeekFrom
 };
@@ -9,7 +9,7 @@ pub struct BitWriter<W> {
     cache: u8
 }
 
-impl<W: Write + Seek> BitWriter<W> {
+impl<W: Write> BitWriter<W> {
 
     pub fn new(inner: W) -> BitWriter<W> {
         BitWriter { inner, cached_bits_count: 0, cache: 0 }
@@ -58,7 +58,43 @@ impl<W: Write + Seek> BitWriter<W> {
         Ok(())
     }
 
+    pub fn into_inner(mut self) -> Result<W, ()> {
+        self.flush();
+        Ok(self.inner)
+    }
+
 }
+
+impl<W: Write> Write for BitWriter<W> {
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        buf.iter().for_each(|byte| self.write_u8(*byte, 8).unwrap());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.write(&[self.cache]);
+        self.cached_bits_count = 0;
+        Ok(())
+    }
+
+}
+
+// impl<W: Write + Seek> Seek for BitWriter<W> {
+//     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+//         self.flush();
+//         match self.inner.seek(pos) {
+//             Ok(pos) => Ok(pos),
+//             Err(err) => Err(err)
+//         }
+//     }
+//     fn stream_position(&mut self) -> io::Result<u64> {
+//         match self.inner.stream_position() {
+//             Ok(pos) => Ok(pos + self.cached_bits_count as u64),
+//             Err(err) => Err(err)
+//         }
+//     }
+// }
 
 #[cfg(test)]
 mod test {

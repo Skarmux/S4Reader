@@ -250,7 +250,7 @@ pub fn decompress<T: Read + Seek, U: Write>(reader: T, writer: &mut U) -> Result
 #[cfg(test)]
 mod tests {
 
-    use std::{assert_eq, io::BufWriter};
+    use std::io::{BufWriter, Cursor};
 
     use super::*;
 
@@ -259,6 +259,24 @@ mod tests {
         player_count: u32,  
         start_resources: u32,  
         map_size: u32,
+    }
+
+    #[test]
+    fn test_reading_from_output() {
+
+        let mut output: [u8;2] = [0;2];
+        
+        let mut reader = BitReader::new(&output[..]);
+
+        assert_eq!{reader.read_u8(8).unwrap(), 0b0000_0000};
+
+        let mut writer = BitWriter::new(&mut output[..]);
+        writer.write_bits(&[0b1111_0000], 4);
+        writer.flush();
+
+        let mut reader = BitReader::new(&output[..]);
+
+        assert_eq!{reader.read_u8(8).unwrap(), 0b1111_0000};
     }
 
     #[test]
