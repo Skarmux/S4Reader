@@ -15,6 +15,11 @@ impl<W: Write> BitWriter<W> {
         BitWriter { inner, cached_bits_count: 0, cache: 0 }
     }
 
+    /// Bit offset from the byte at the starting position of inner.
+    pub fn with_offset(offset: u8, inner: W) -> BitWriter<W> {
+        BitWriter { inner, cached_bits_count: offset, cache: 0 }
+    }
+
     fn write_u8(&mut self, byte: u8, count: u8) -> io::Result<()> {
 
         assert!(count <= 8, "count is larger than fits inside 8 bits!");

@@ -17,6 +17,15 @@ impl<R: Read> BitReader<R> {
         BitReader { inner, cached_bits_count: 0, cache: 0 }
     }
 
+    /// Bit offset from the byte at the starting position of inner.
+    pub fn with_offset(offset: u8, inner: R) -> BitReader<R> {
+        BitReader { 
+            inner, 
+            cached_bits_count: 8 - offset, 
+            cache: inner.read_u8().unwrap() << offset
+        }
+    }
+
     pub fn read_u8(&mut self, count: u8) -> Option<u8> {
         assert!(count <= 8);
 
