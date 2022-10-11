@@ -265,10 +265,6 @@ mod tests {
     fn test_reading_from_output() {
 
         let mut output: [u8;2] = [0;2];
-        
-        let mut reader = BitReader::new(&output[..]);
-
-        assert_eq!{reader.read_u8(8).unwrap(), 0b0000_0000};
 
         let mut writer = BitWriter::new(&mut output[..]);
         writer.write_bits(&[0b1111_0000], 4);
