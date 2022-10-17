@@ -30,8 +30,8 @@ impl<R: Read> BitReader<R> {
         reader
     }
 
-    pub fn read_u8(&mut self, count: u8) -> Option<u8> {
-        assert!(count <= 8);
+    pub fn read_u8(&mut self, count: u8) -> Result<u8, ()> {
+        assert!(count <= 8, "Number of bits can't be more than 8!");
 
         // fill up cache
         if self.cached_bits_count < count {
@@ -45,7 +45,7 @@ impl<R: Read> BitReader<R> {
         self.cache = self.cache << count;
         self.cached_bits_count -= count;
 
-        Some(result as u8)
+        Ok(result as u8)
     }
 
 }
@@ -63,8 +63,51 @@ mod test {
         let mut bit_reader = BitReader::new(&input[..]);
 
         let byte = bit_reader.read_u8(3);
-        assert!(byte.is_some());
+        assert!(byte.is_ok(), "Error while reading byte!");
         assert_eq!(byte.unwrap(), 0b0000_0111);
+    }
+
+    #[test]
+    #[should_panic(expected = "Number of bits can't be more than 8!")]
+    fn test_read_u8_larger_than_byte() {
+
+        let mut input: [u8;2] = [0b1110_0000, 0b0101_0101];
+        let mut bit_reader = BitReader::new(&input[..]);
+
+        bit_reader.read_u8(9);
+    }
+
+    #[test]
+    #[should_panic(expected = "Can't read over end of input!")]
+    fn test_read_u8_panic_out_of_range() {
+
+        let mut input: [u8;1] = [0b1110_0000];
+        let mut bit_reader = BitReader::new(&input[..]);
+
+        bit_reader.read_u8(8);
+        bit_reader.read_u8(1);
+    }
+
+    #[test]
+    fn test_with_offset() {
+
+        let mut input: [u8;2] = [0b1110_0000, 0b0101_1111];
+        let mut bit_reader = BitReader::with_offset(4, &input[..]);
+
+        let byte = bit_reader.read_u8(8);
+        assert!(byte.is_ok(), "Error while reading byte!");
+        assert_eq!(byte.unwrap(), 0b0000_0101);
+    }
+
+    #[test]
+    fn test_with_offset_larger_than_byte() {
+
+        let mut input: [u8;2] = [0b1110_0000, 0b0101_1111];
+        let mut bit_reader = BitReader::with_offset(12, &input[..]);
+
+        let byte = bit_reader.read_u8(4);
+        assert!(byte.is_ok(), "Error while reading byte!");
+        assert_eq!(byte.unwrap(), 0b0000_1111);
     }
 
 }
