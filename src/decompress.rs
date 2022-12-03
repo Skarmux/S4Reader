@@ -5,9 +5,12 @@ mod bitwriter;
 use std::io::prelude::*;
 use std::io::Error;
 use std::io::BufReader;
+use std::io::SeekFrom;
 use std::ops::Index;
 use std::slice;
 
+use byteorder::ReadBytesExt;
+use byteorder::WriteBytesExt;
 use byteorder::{ByteOrder, LittleEndian};
 
 use bitreader::BitReader;
@@ -67,180 +70,158 @@ struct CodeItem {
     count: u32
 }
 
-fn generate_code_table() -> [CodeItem;274] {
-    let mut table: [CodeItem;274] = [Default::default();274];
+#[derive(Clone, Copy)]
+struct SymbolTable<const N: usize> {
+    indices:  [u16;N],
+    alphabet: [u16;N],
+    count:    [u16;N]
+}
 
-    for (index, item) in table.iter_mut().enumerate() {
-        item.index = index as u32;
-        item.value = match index {
-            0..=15 => index as u32 + 0x100,
-            16 => 0x00,
-            17 => 0x20,
-            18 => 0x30,
-            19 => 0xFF,
-            _ => (index as u32 - 19)
+impl<const N: usize> SymbolTable<N> {
+
+    pub fn new() -> SymbolTable<N> {
+
+        let mut table: [CodeItem;274] = [Default::default();274];
+
+        let mut table = Self {
+            indices:  [0;N],
+            alphabet: [0;N],
+            count:    [0;N]
         };
-        item.count = 0;
+
+        for i in 0..N {
+            table.indices[i] = i as u16;
+            table.alphabet[i] = match i {
+                0..=15 => i as u16 + 0x100,
+                16 => 0x00,
+                17 => 0x20,
+                18 => 0x30,
+                19 => 0xFF,
+                _ => (i as u16 - 19)
+            }
+        }
+
+        table
     }
 
-    table
-}
+    pub fn symbol_at(&mut self, index: usize) -> u16 {
+        assert!(index < N);
+        self.count[index] += 1;
+        self.alphabet[index]
+    }
 
-fn reset_code_table( table: &mut [CodeItem;274] ) {
+    /// Restore ascending ordering of indices array.
+    pub fn reset_indices(&mut self) -> Result<(),()> {
+        self.indices.iter_mut().enumerate().map(|(i, x)| *x = (i as u16) );
+        Ok(())
+    }
+
+    /// Replace alphabet with consecutive numbers sorted by count.
+    pub fn rebuild_alphabet(&mut self) -> Result<(),()> {
+        self.alphabet = [0;N];
+        self.alphabet.iter_mut().enumerate().map(|(i, n)| *n = i as u16);
+        self.alphabet.sort_by(|&x1, &x2| {
+            ((self.count[x2 as usize] << 16) + x2).cmp(&((self.count[x1 as usize] << 16) + x1))
+        });
+        Ok(())
+    }
     
-    table.iter_mut().enumerate().map(|(index, item)| item.value = index as u32 );
-
-    let mut tmp_table = table.clone();
-    tmp_table.sort_by_key(|item| item.count );
-
-    table.iter_mut().enumerate().map(|(index, item)| item.index = tmp_table[index].index );
-
-    // we reduce the original quantity by 2 to the impact for the next CreateCodeTableFromFrequency() call
-    // table.iter_mut().enumerate().map(|(index, item)| item.count = item.count / 2 );
-
-    reset_code_table_indices( table );
 }
 
-fn reset_code_table_indices( table: &mut [CodeItem;274] ) {
-    for (index, item) in table.iter_mut().enumerate() {
-        item.index = index as u32;
-    };
-}
-
-pub fn decompress<T: Read + Seek, U: Write>(reader: T, writer: &mut U) -> Result<(), std::io::Error> {
+pub fn decompress<T: Read, U: Read + Write + Seek>(reader: T, mut writer: U) -> Result<(), std::io::Error> {
 
     let mut bit_reader = BitReader::new( reader );
     
-    let mut huffman_table: [Item<u32,u8>;16] = [Default::default();16];
+    let mut huffman_table: [Item<u32,u8>;16] = [Default::default();16]; // symbol index table
     huffman_table.copy_from_slice(&HUFFMAN_TABLE[..]);
 
-    let mut code_table = generate_code_table();
+    let mut symbol_table = SymbolTable::<274>::new();
 
-    while let Some(code_type) = bit_reader.read_u8(4) {
+    while let Ok(code) = bit_reader.read_u8(4) {
 
-        assert!( code_type < 128, "out of sync!" );
+        assert!( code < 128, "out of sync!" );
 
-        // read code word
-        let code_length = huffman_table[code_type as usize].length;
-        let mut code_index = huffman_table[code_type as usize].value as usize;
+        // read code item
+        let mut code_item = huffman_table[code as usize];
+        let bits = code_item.length;
+        let offset = code_item.value;
+        let index = (bit_reader.read_u8(code_item.length as u8).unwrap() + offset) as usize;
 
-        // get index for code_word
-        if code_length > 0 {
+        let symbol = symbol_table.symbol_at(index);
 
-            code_index += bit_reader.read_u8(code_length as u8).unwrap() as usize;
-            
-            assert!(code_index < code_table.len(), "out of sync!");
-        }
+        //let mut write_pos: usize = 0;
 
-        let code_word = code_table[code_index].value;
-
-        match code_word {
-            // this is a normal letter (representable as 1 byte)
+        // execute code word
+        match symbol {
             0..=255 => {
-                writer.write(&(code_word as u8).to_le_bytes());
+                // uncompressed
+                writer.write_u8(symbol as u8);
+                //dest[write_pos] = symbol as u8;
+                //write_pos += 1;
             }
-            // try reading from dictionary
-            256..=263 => {
-                let mut entry_length = code_word - 256;
-                assert!( entry_length < 8 );
-                
-                let bit_value = bit_reader.read_u8(3).unwrap();
-                assert!( bit_value > 128, "out of sync!" );
+            256..=271 => {
+                // symbol from dictionary
+                let mut length = 4;
 
-                let length = LZ_DISTANCE_TABLE[bit_value as usize].length + 1;
-                let base_value = LZ_DISTANCE_TABLE[bit_value as usize].value;
-                assert!(length <= 8);
+                if symbol < 264 {
+                    length += symbol - 256;
+                }
+                else {
+                    let index = (symbol - 264) as usize;
+                    let bits = LZ_LENGTH_TABLE[(index << 1) as usize].length;
+                    let offset = LZ_LENGTH_TABLE[((index << 1) + 1) as usize].value;
+                    length += offset + (bit_reader.read_u8(bits as u8).unwrap() as u16);
+                }
 
-                let bit_value = bit_reader.read_u8(8).unwrap() as u16;
-                let copy_offset = bit_value << length;
+                let code = bit_reader.read_u8(3).unwrap();
+                let bits = LZ_DISTANCE_TABLE[(code << 1) as usize].length;
+                let offset = LZ_DISTANCE_TABLE[((code << 1) + 1) as usize].value;
+                let distance = (offset << 9) + bit_reader.read_u8(bits + 9).unwrap();
 
-                let bit_value = bit_reader.read_u8(length).unwrap();
-                assert!( bit_value > 128, "out of sync!" );
-
-                entry_length += 4;
-
-
-                // jump back in writer an re-use word
-                panic!("not implemented!");
-            }
-            264..=271 => {
-                let bit_length = code_table[code_word as usize - 264].value;
-                assert!(bit_length <= 32, "bit_length exceeds 32 bit range!");
-
-                //reader.read_exact(&mut buf);
-
-                //let mut tmp = u32::from_le_bytes(buf);
-                //tmp = tmp >> (32 - bit_length);
-
-                // entryLenght = m_tab1.m_value[codeword - 264] + ReadInByte;
-            }
-            // create new entropy encoding table
-            272 => {
-                reset_code_table( &mut code_table );
-
-                // update huffman table
-                let mut base = 0;
-                let mut length: i32 = 0;
-
-                for item in huffman_table.iter_mut() {
-                    
-                    item.length -= 1;
-
-                    loop {
-                        item.length += 1;
-                        //reader.read_exact(&mut buf);
-                        //let bit_value = LittleEndian::read_i32(&buf);
-                        // if bit_value != 0 {
-                        //     break;
-                        // }
-                    }
-
-                    base += (1 << item.length);
+                // LZ77 jumping
+                let write_pos = writer.stream_position().unwrap();
+                let jump_pos = write_pos - distance as u64;
+                for i in 0..(length as usize) {
+                    writer.seek(SeekFrom::Start(jump_pos));
+                    let prev_symbol = writer.read_u8().unwrap(); //dest[(index + i)];
+                    writer.seek(SeekFrom::Start(write_pos));
+                    writer.write_u8(prev_symbol);
                 }
             }
-            // end of stream
-            273 => {
-                // end-of-stream code word
-                // let writer_pos = writer.stream_position();
-                // let length_remaining = reader.stream_position() - encrypted_data_length;
+            272 => {
+                // some sort of reset
+                symbol_table.rebuild_alphabet();
 
-                // if length_remaining > 2 {
-                //     // reset bit buffer
-                // } else {
-                //     break;
-                // }
+                // divide all counts by two
+                symbol_table.count.iter_mut().map(|count| *count /= 2 );
+
+                // parse new huffman table
+                let mut bits_count = 0;
+                let mut offset = 0;
+                let mut length = 0;
+
+                for i in 0..16 {
+
+                    while let Ok(bit) = bit_reader.read_u8(1) {
+                        if bit > 0 {
+                            break;
+                        }
+                        else {
+                            bits_count += 1;
+                        }
+                    }
+
+                    symbol_table.indices[length] = bits_count;
+                    symbol_table.indices[length + 1] = offset;
+                    length += 2;
+                    offset += 1 << bits_count;
+
+                }
             }
-            // try reading from dictionary
             _ => {
-                let length = LZ_LENGTH_TABLE[code_word as usize - 264].length;
-                let byte = bit_reader.read_u8(length).unwrap();
-                assert!(byte > 128, "out of sync!");
-
-                let mut entry_length = LZ_LENGTH_TABLE[code_word as usize - 264].value + byte as u16;
-
-                // from here same as 256..=263
-                let bit_value = bit_reader.read_u8(3).unwrap();
-                assert!( bit_value > 128, "out of sync!" );
-
-                let length = LZ_DISTANCE_TABLE[bit_value as usize].length + 1;
-                let base_value = LZ_DISTANCE_TABLE[bit_value as usize].value;
-                assert!(length <= 8);
-
-                let bit_value = bit_reader.read_u8(8).unwrap() as u16;
-                let copy_offset = bit_value << length;
-
-                let bit_value = bit_reader.read_u8(length).unwrap();
-                assert!( bit_value > 128, "out of sync!" );
-
-                entry_length += 4;
-
-                // jump back in writer an re-use word
-                panic!("not implemented!");
-
-                // else...
-                panic!("Bad dictionary entry!")
+                // end-of-stream
+                break;
             }
-            
         }
     }
 

@@ -138,6 +138,9 @@ impl<T> Map<T> where T: Read + Seek {
     }
 }
 
+/* RUST API how to handle Path strings: 21:31 https://www.youtube.com/watch?v=6-8-9ZV-2WQ */
+// pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, ...> { ... }
+
 fn main() -> Result<(), Box<dyn Error>> {
 
     let map_file = OpenOptions::new().read(true).open("map/Aeneas.map")?;
