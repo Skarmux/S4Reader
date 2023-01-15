@@ -2,11 +2,9 @@
 mod bitreader;
 mod bitwriter;
 
-use std::io::prelude::*;
-use std::io::Error;
-use std::io::BufReader;
-use std::io::SeekFrom;
-use std::ops::Index;
+use std::io::{prelude::*,Error,BufReader,SeekFrom,Cursor};
+use std::ops::{Index, IndexMut};
+use std::collections::VecDeque;
 use std::slice;
 
 use byteorder::ReadBytesExt;
@@ -44,7 +42,7 @@ static LZ_LENGTH_TABLE: [Item<u8,u16>;8] = [
     Item{ length:8, value:0x106 }
 ];
 
-static HUFFMAN_TABLE: [Item<u32,u8>;16] = [
+static HUFFMAN_TABLE: [Item<u32,u16>;16] = [
     Item{ length:2, value:0x00 },
     Item{ length:3, value:0x04 },
     Item{ length:3, value:0x0C },
@@ -71,26 +69,26 @@ struct CodeItem {
 }
 
 #[derive(Clone, Copy)]
-struct SymbolTable<const N: usize> {
-    indices:  [u16;N],
-    alphabet: [u16;N],
-    count:    [u16;N]
+struct SymbolTable {
+    indices:  [u16;274],
+    alphabet: [u16;274],
+    count:    [u16;274]
 }
 
-impl<const N: usize> SymbolTable<N> {
+impl SymbolTable {
 
-    pub fn new() -> SymbolTable<N> {
+    pub fn new() -> SymbolTable {
 
-        let mut table: [CodeItem;274] = [Default::default();274];
+        //let mut table: [CodeItem;274] = [Default::default();274];
 
         let mut table = Self {
-            indices:  [0;N],
-            alphabet: [0;N],
-            count:    [0;N]
+            indices:  [0;274],
+            alphabet: [0;274],
+            count:    [0;274]
         };
 
-        for i in 0..N {
-            table.indices[i] = i as u16;
+        for i in 0..274 {
+            //table.indices[i] = i as u16;
             table.alphabet[i] = match i {
                 0..=15 => i as u16 + 0x100,
                 16 => 0x00,
@@ -98,14 +96,15 @@ impl<const N: usize> SymbolTable<N> {
                 18 => 0x30,
                 19 => 0xFF,
                 _ => (i as u16 - 19)
-            }
+            };
+            table.indices[table.alphabet[i] as usize] = i as u16;
         }
 
         table
     }
 
     pub fn symbol_at(&mut self, index: usize) -> u16 {
-        assert!(index < N);
+        assert!(index < 274);
         self.count[index] += 1;
         self.alphabet[index]
     }
@@ -118,75 +117,69 @@ impl<const N: usize> SymbolTable<N> {
 
     /// Replace alphabet with consecutive numbers sorted by count.
     pub fn rebuild_alphabet(&mut self) -> Result<(),()> {
-        self.alphabet = [0;N];
+        self.alphabet = [0;274];
         self.alphabet.iter_mut().enumerate().map(|(i, n)| *n = i as u16);
+
         self.alphabet.sort_by(|&x1, &x2| {
-            ((self.count[x2 as usize] << 16) + x2).cmp(&((self.count[x1 as usize] << 16) + x1))
+            (self.count[x2 as usize].checked_shl(16).unwrap() + x2)
+            .cmp(&(self.count[x1 as usize].checked_shl(16).unwrap() + x1))
         });
         Ok(())
     }
     
 }
 
-pub fn decompress<T: Read, U: Read + Write + Seek>(reader: T, mut writer: U) -> Result<(), std::io::Error> {
+pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), std::io::Error> {
 
     let mut bit_reader = BitReader::new( reader );
     
-    let mut huffman_table: [Item<u32,u8>;16] = [Default::default();16]; // symbol index table
-    huffman_table.copy_from_slice(&HUFFMAN_TABLE[..]);
+    let mut huffman_table = HUFFMAN_TABLE.clone(); // symbol index table
 
-    let mut symbol_table = SymbolTable::<274>::new();
+    let mut symbol_table = SymbolTable::new();
+
+    let mut output_pos: usize = 0;
 
     while let Ok(code) = bit_reader.read_u8(4) {
+
+        if output_pos >= output.len() {
+            // reached end of output
+            break;
+        }
 
         assert!( code < 128, "out of sync!" );
 
         // read code item
         let mut code_item = huffman_table[code as usize];
         let bits = code_item.length;
-        let offset = code_item.value;
-        let index = (bit_reader.read_u8(code_item.length as u8).unwrap() + offset) as usize;
+        let mut symbol_table_index = code_item.value;
 
-        let symbol = symbol_table.symbol_at(index);
+        if bits > 0 {
+            // read more bits
+            symbol_table_index += bit_reader.read_u8(bits as u8).unwrap() as u16;
 
-        //let mut write_pos: usize = 0;
+            assert!( symbol_table_index < 274, "out of sync!" );
+        }
+
+        let symbol: u16 = symbol_table.symbol_at(symbol_table_index as usize);
+
+        let mut length = 4;
 
         // execute code word
         match symbol {
             0..=255 => {
-                // uncompressed
-                writer.write_u8(symbol as u8);
-                //dest[write_pos] = symbol as u8;
-                //write_pos += 1;
+                // not compressed
+                output[output_pos] = symbol as u8;
+                output_pos += 1;
+                continue;
             }
-            256..=271 => {
-                // symbol from dictionary
-                let mut length = 4;
-
-                if symbol < 264 {
-                    length += symbol - 256;
-                }
-                else {
-                    let index = (symbol - 264) as usize;
-                    let bits = LZ_LENGTH_TABLE[(index << 1) as usize].length;
-                    let offset = LZ_LENGTH_TABLE[((index << 1) + 1) as usize].value;
-                    length += offset + (bit_reader.read_u8(bits as u8).unwrap() as u16);
-                }
-
-                let code = bit_reader.read_u8(3).unwrap();
-                let bits = LZ_DISTANCE_TABLE[(code << 1) as usize].length;
-                let offset = LZ_DISTANCE_TABLE[((code << 1) + 1) as usize].value;
-                let distance = (offset << 9) + bit_reader.read_u8(bits + 9).unwrap();
-
-                // LZ77 jumping
-                let write_pos = writer.stream_position().unwrap();
-                let jump_pos = write_pos - distance as u64;
-                for i in 0..(length as usize) {
-                    writer.seek(SeekFrom::Start(jump_pos));
-                    let prev_symbol = writer.read_u8().unwrap(); //dest[(index + i)];
-                    writer.seek(SeekFrom::Start(write_pos));
-                    writer.write_u8(prev_symbol);
-                }
+            256..=264 => {
+                length += symbol - 256;
+            }
+            265..=271 => {
+                let index = (symbol - 264) as usize;
+                let bits = LZ_LENGTH_TABLE[(index << 1) as usize].length;
+                let offset = LZ_LENGTH_TABLE[((index << 1) + 1) as usize].value;
+                length += offset + (bit_reader.read_u8(bits as u8).unwrap() as u16);
             }
             272 => {
                 // some sort of reset
@@ -201,7 +194,6 @@ pub fn decompress<T: Read, U: Read + Write + Seek>(reader: T, mut writer: U) -> 
                 let mut length = 0;
 
                 for i in 0..16 {
-
                     while let Ok(bit) = bit_reader.read_u8(1) {
                         if bit > 0 {
                             break;
@@ -210,19 +202,45 @@ pub fn decompress<T: Read, U: Read + Write + Seek>(reader: T, mut writer: U) -> 
                             bits_count += 1;
                         }
                     }
-
                     symbol_table.indices[length] = bits_count;
                     symbol_table.indices[length + 1] = offset;
                     length += 2;
                     offset += 1 << bits_count;
-
                 }
+                continue;
             }
-            _ => {
-                // end-of-stream
+            273 => {
+                // end of data
                 break;
             }
+            _ => {
+                panic!("unhandled symbol: {}", symbol);
+            }
         }
+
+        let lz_index = bit_reader.read_u8(3).unwrap() as usize;
+        let lz_item = LZ_DISTANCE_TABLE[lz_index];
+        let bits = lz_item.length + 1;
+        let offset = lz_item.value as usize;
+        
+        let code = bit_reader.read_u8(8).unwrap();
+        let copy_offset = code.checked_shl(bits as u32).unwrap();
+
+        let code = bit_reader.read_u8(bits).unwrap();
+
+        assert!((output_pos + length as usize) < output.len(), "output buffer not large enough!");
+
+        // source position in buffer (LZ Jumping)
+        let bit_and = (code | copy_offset) as usize; // WAS IST DAS?
+        let mut src_pos = output_pos - bit_and + offset.checked_shl(9).unwrap();
+
+        // we need to use single-byte-copy the data case, the src and dest can be overlapped
+        for i in (0..=length).rev() {
+            output[output_pos] = output[src_pos];
+            output_pos += 1;
+            src_pos += 1;
+        }
+
     }
 
     Ok(())

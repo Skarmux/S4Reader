@@ -2,156 +2,133 @@
 
 mod ara_crypt;
 mod decompress;
+mod map;
 
-use std::error::Error;
+use map::GeneralInformation;
+use decompress::decompress;
 
 use byteorder::ReadBytesExt;
 use byteorder::{ByteOrder, LittleEndian};
 
 use std::fs::OpenOptions;
 
-use std::io::SeekFrom;
-use std::io::prelude::*;
-use std::io::BufReader;
 use std::io;
+use std::io::{SeekFrom, BufWriter, prelude::*, BufReader, Error, ErrorKind, Cursor};
+use std::fs::File;
+use std::ops::Index;
+use std::path::Path;
 
 use ara_crypt::AraCrypt;
 
-#[derive(PartialEq)]
-enum Segment {
-    Unknown,
-    General{ position: u64, content: Option<GeneralInformation> },
-    Player,
-    Team,
-    Preview,
-    Objects,
-    Settlers,
-    Buildings,
-    Stacks,
-    QuestText,
-    QuestTip,
-    Landscape,
-}
+// #[derive(PartialEq, Debug)]
+// enum Segment {
+//     General(GeneralInformation) = 1,
+//     // Player = 2,
+//     // Team = 3,
+//     // Preview = 4,
+//     // Objects = 6,
+//     // Settlers = 7,
+//     // Buildings = 8,
+//     // Stacks = 9,
+//     // QuestText = 11,
+//     // QuestTip = 12,
+//     // Landscape = 13,
+// }
 
-#[derive(PartialEq)]
-struct GeneralInformation {
-    game_type: u32,  
-    player_count: u32,  
-    start_resources: u32,  
-    map_size: u32
-}
-
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 struct SegmentHeader {
-    segment_id: u32,
-    encrypted_data_length: u32,
-    decrypted_data_length: u32,
-    checksum: u32
+    segment_type: u32,
+    encrypted_data_length: usize,
+    decrypted_data_length: usize,
+    checksum: u32,
+    offset: u64
 }
 
-struct Map<T: Read + Seek> {
-    reader: T,
-    segment_register: Vec<Segment>
+struct MapFile {
+    inner: BufReader<File>,
+    segment_header: Vec<SegmentHeader>
 }
 
-impl<T> Map<T> where T: Read + Seek {
+impl MapFile {
 
-    fn from( mut reader: T ) -> Result<Map<T>, std::io::Error> {
-    
+    /// same as std::fs::File
+    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<MapFile> {
+
+        /* opening file */
+        let file = OpenOptions::new().read(true).open(path.as_ref())?;
+        let mut inner =  BufReader::new(file);
+
         /* validating file */
-        let checksum     = reader.read_u32::<LittleEndian>().unwrap();
-        let file_version = reader.read_u32::<LittleEndian>().unwrap();
-
-        /* scraping the file */
-        let mut segment_register = Vec::<Segment>::new();
-
-        let mut header = Self::read_header(&mut reader);
-
-        while header.is_ok() {
-
-            let stream_position = reader.stream_position().unwrap();
-
-            segment_register.push( match header.unwrap().segment_id {
-                1 => Segment::General{ position: stream_position, content: None },
-                _ => Segment::Unknown,
-            });
-
-            // move position to after segment data
-            reader.seek(SeekFrom::Current( header.unwrap().encrypted_data_length as i64 )).unwrap();
-
-            header = Self::read_header(&mut reader);
-        }
-
-        reader.rewind();
-
-        Ok( Self { reader, segment_register } )
+        let checksum     = inner.read_u32::<LittleEndian>().unwrap();
+        let file_version = inner.read_u32::<LittleEndian>().unwrap();
+        // TODO: File Validation missing
+        
+        Ok(MapFile { inner, segment_header: Vec::new() })
     }
 
-    fn read_header( reader: &mut T ) -> Result<SegmentHeader, ()> {
+    /// preload each segments header information
+    pub fn index(&mut self) -> io::Result<()> {
 
+        /* read header */
         const HEADER_SIZE: usize = 24;
         const HEADER_CRYPT_KEYS: [u32;3] = [0x30313233, 0x34353637, 0x38393031];
 
+        /* fill header buffer */
         let mut header_buffer: [u8; HEADER_SIZE] = [0; HEADER_SIZE];
+        
+        while self.inner.read_exact( &mut header_buffer ).is_ok() {
 
-        reader.read_exact( &mut header_buffer );
+            /* decrypt */
+            let mut ara_crypt = AraCrypt::new( HEADER_CRYPT_KEYS );
+            header_buffer.iter_mut().for_each( |x| *x = *x ^ ara_crypt.next() as u8 );
 
-        /* decrypt buffer */
-        let mut ara_crypt = AraCrypt::new( HEADER_CRYPT_KEYS );
-        header_buffer.iter_mut().for_each( |x| *x = *x ^ ara_crypt.next() as u8 );
+            /* interprete header segment */
+            let mut header_iter = header_buffer.chunks_exact( 4 );
+            let header = SegmentHeader {
+                segment_type: LittleEndian::read_u32( &header_iter.next().unwrap() ),
+                encrypted_data_length: LittleEndian::read_u32( &header_iter.next().unwrap() ) as usize, 
+                decrypted_data_length: LittleEndian::read_u32( &header_iter.next().unwrap() ) as usize, 
+                checksum: LittleEndian::read_u32( &header_iter.next().unwrap() ),
+                offset: self.inner.stream_position().unwrap()
+            };
 
-        let mut header_iter = header_buffer.chunks_exact( 4 );
+            self.segment_header.push(header);
 
-        reader.seek(SeekFrom::Current(HEADER_SIZE as i64));
+            /* move stream position behind data content of current segment */
+            if let Err(err) = self.inner.seek(SeekFrom::Current( header.encrypted_data_length as i64 )) {
+                return Err(err);
+            }
 
-        Ok ( SegmentHeader { 
-            segment_id: LittleEndian::read_u32( &header_iter.next().unwrap() ), 
-            encrypted_data_length: LittleEndian::read_u32( &header_iter.next().unwrap() ), 
-            decrypted_data_length: LittleEndian::read_u32( &header_iter.next().unwrap() ), 
-            checksum: LittleEndian::read_u32( &header_iter.next().unwrap() )
-        } )
+        }
+
+        self.inner.rewind();
+
+        Ok(())
     }
 
-    pub fn game_type(&mut self) -> Option<u32> {
+    pub fn general_information(&mut self) -> Result<GeneralInformation,()> {
 
-        let segment: Option<(u64, Option<GeneralInformation>)> = None;
-
-        let position: u64 = 0;
-        let content: Option<GeneralInformation> = None;
-
-        for s in self.segment_register.iter() {
-            match s {
-                Segment::General { position, content } => break,
-                _ => continue
-            };
+        for header in self.segment_header.iter() {
+            if header.segment_type == 1 {
+                //dbg!(header);
+                self.inner.seek(SeekFrom::Start(header.offset));
+                let mut decrypt = Vec::<u8>::with_capacity(header.decrypted_data_length);
+                decrypt.resize(header.decrypted_data_length, 0);
+                if decompress(&mut self.inner, &mut decrypt).is_ok() {
+                    dbg!(&decrypt);
+                    return Ok(GeneralInformation::from_le_bytes(&decrypt[..]));
+                }
+            }
         }
-
-        // load on demand
-        if content.is_none() {
-            self.reader.seek(SeekFrom::Start(position)).unwrap();
-            let header = Self::read_header(&mut self.reader).unwrap();
-            let mut data_buffer : Vec<u8> = Vec::<u8>::with_capacity(header.decrypted_data_length as usize);
-            //self.decompress(&data_buffer[..], self.reader.take(header.encrypted_data_length as u64));
-        }
-
-        Some(content.unwrap().game_type)
+        Err(())
     }
 }
 
-/* RUST API how to handle Path strings: 21:31 https://www.youtube.com/watch?v=6-8-9ZV-2WQ */
-// pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, ...> { ... }
-
-fn main() -> Result<(), Box<dyn Error>> {
-
-    let map_file = OpenOptions::new().read(true).open("map/Aeneas.map")?;
-
-    let buf_reader = BufReader::new(map_file);
-
-    Map::from( buf_reader );
-
-    //decompress();
-
-    Ok(())
+fn main() {
+    let mut map_file = MapFile::open( "map/Aeneas.map" ).unwrap();
+    map_file.index();
+    let general_information = map_file.general_information().unwrap();
+    dbg!(general_information);
 }
 
 #[cfg(test)]
@@ -160,6 +137,18 @@ mod tests {
     use std::assert_eq;
 
     use super::*;
+
+    // #[test]
+    // fn test_read_header() {
+    //     let map_file = OpenOptions::new().read(true).open("map/Aeneas.map").unwrap();
+
+    //     let buf_reader = BufReader::new(map_file);
+
+    //     let map = MapFile::from( buf_reader ).unwrap();
+    //     let general_information = map[Segment::General];
+
+    //     dbg!(map.segments);
+    // }
 
     #[test]
     fn test_map_file() {
