@@ -115,7 +115,6 @@ impl MapFile {
                 let mut decrypt = Vec::<u8>::with_capacity(header.decrypted_data_length);
                 decrypt.resize(header.decrypted_data_length, 0);
                 if decompress(&mut self.inner, &mut decrypt).is_ok() {
-                    dbg!(&decrypt);
                     return Ok(GeneralInformation::from_le_bytes(&decrypt[..]));
                 }
             }

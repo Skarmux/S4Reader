@@ -88,14 +88,22 @@ impl SymbolTable {
         };
 
         for i in 0..274 {
-            //table.indices[i] = i as u16;
             table.alphabet[i] = match i {
                 0..=15 => i as u16 + 0x100,
                 16 => 0x00,
                 17 => 0x20,
                 18 => 0x30,
                 19 => 0xFF,
-                _ => (i as u16 - 19)
+                _ => {
+                    let mut value = 1;
+                    for j in 1..274 {
+                        if !table.alphabet.contains(&j) {
+                            value = j;
+                            break;
+                        }
+                    }
+                    value
+                }
             };
             table.indices[table.alphabet[i] as usize] = i as u16;
         }
