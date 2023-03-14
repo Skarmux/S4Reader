@@ -1,4 +1,3 @@
-
 pub struct AraCrypt {
     key_a: u32,
     key_b: u32,
@@ -6,13 +5,15 @@ pub struct AraCrypt {
 }
 
 impl AraCrypt {
-
-    pub fn new( keys: [u32;3] ) -> Self {
-        AraCrypt { key_a: keys[0], key_b: keys[1], key_c: keys[2], }
+    pub fn new(keys: [u32; 3]) -> Self {
+        AraCrypt {
+            key_a: keys[0],
+            key_b: keys[1],
+            key_c: keys[2],
+        }
     }
 
     pub fn next(&mut self) -> u32 {
-
         let mut bit_a: u32 = self.key_b & 1;
         let mut bit_b: u32 = self.key_c & 1;
 
@@ -31,9 +32,7 @@ impl AraCrypt {
         let mut next_key: u32 = 0;
 
         for _i in 0..8 {
-
             if (self.key_a & 1) != 0 {
-
                 self.key_a = ((KEY_MASK_A ^ self.key_a) >> 1) | KEY_ROT1_A;
 
                 if (self.key_b & 1) != 0 {
@@ -43,9 +42,7 @@ impl AraCrypt {
                     self.key_b = (self.key_b >> 1) & KEY_ROT0_B;
                     bit_a = 0;
                 }
-            } 
-            else {
-
+            } else {
                 self.key_a = (self.key_a >> 1) & KEY_ROT0_A;
 
                 if (self.key_c & 1) != 0 {
@@ -55,15 +52,14 @@ impl AraCrypt {
                     self.key_c = (self.key_c >> 1) & KEY_ROT0_C;
                     bit_b = 0;
                 }
-            }  
-        
-            next_key  = (bit_b ^ bit_a) | (next_key << 1);
+            }
+
+            next_key = (bit_b ^ bit_a) | (next_key << 1);
         }
 
         next_key
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -72,16 +68,15 @@ mod tests {
 
     #[test]
     fn test_aracrypt() {
+        let mut ara_crypt = AraCrypt::new([0x30313233, 0x34353637, 0x38393031]);
 
-        let mut ara_crypt = AraCrypt::new([0x30313233, 0x34353637, 0x38393031] );
-
-        assert_eq!(ara_crypt.next(), 1 );
-        assert_eq!(ara_crypt.next(), 250 );
-        assert_eq!(ara_crypt.next(), 56 );
-        assert_eq!(ara_crypt.next(), 38 );
-        assert_eq!(ara_crypt.next(), 228 );
-        assert_eq!(ara_crypt.next(), 192 );
-        assert_eq!(ara_crypt.next(), 224 );
-        assert_eq!(ara_crypt.next(), 64 );
+        assert_eq!(ara_crypt.next(), 1);
+        assert_eq!(ara_crypt.next(), 250);
+        assert_eq!(ara_crypt.next(), 56);
+        assert_eq!(ara_crypt.next(), 38);
+        assert_eq!(ara_crypt.next(), 228);
+        assert_eq!(ara_crypt.next(), 192);
+        assert_eq!(ara_crypt.next(), 224);
+        assert_eq!(ara_crypt.next(), 64);
     }
 }
