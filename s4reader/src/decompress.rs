@@ -1,167 +1,8 @@
-use std::collections::VecDeque;
-use std::io::{prelude::*, BufReader, Cursor, Error, SeekFrom};
-use std::ops::{Index, IndexMut};
-use std::slice;
-
-use byteorder::ReadBytesExt;
-use byteorder::WriteBytesExt;
-use byteorder::{ByteOrder, LittleEndian};
-
 use crate::bitreader::BitReader;
-use crate::bitwriter::BitWriter;
+use std::io::prelude::*;
 
 // https://www.rfc-editor.org/rfc/rfc1951
 // https://www.rfc-editor.org/rfc/rfc1952
-
-#[derive(Default, Clone, Copy)]
-struct Item<T: Copy, U: Copy> {
-    length: T,
-    value: U,
-}
-
-static LZ_DISTANCE_TABLE: [Item<u8, u8>; 8] = [
-    Item {
-        length: 0,
-        value: 0x00,
-    },
-    Item {
-        length: 0,
-        value: 0x01,
-    },
-    Item {
-        length: 1,
-        value: 0x02,
-    },
-    Item {
-        length: 2,
-        value: 0x04,
-    },
-    Item {
-        length: 3,
-        value: 0x08,
-    },
-    Item {
-        length: 4,
-        value: 0x10,
-    },
-    Item {
-        length: 5,
-        value: 0x20,
-    },
-    Item {
-        length: 6,
-        value: 0x40,
-    },
-];
-
-static LZ_LENGTH_TABLE: [Item<u8, u16>; 8] = [
-    Item {
-        length: 1,
-        value: 0x008,
-    },
-    Item {
-        length: 2,
-        value: 0x00A,
-    },
-    Item {
-        length: 3,
-        value: 0x00E,
-    },
-    Item {
-        length: 4,
-        value: 0x016,
-    },
-    Item {
-        length: 5,
-        value: 0x026,
-    },
-    Item {
-        length: 6,
-        value: 0x046,
-    },
-    Item {
-        length: 7,
-        value: 0x086,
-    },
-    Item {
-        length: 8,
-        value: 0x106,
-    },
-];
-
-static HUFFMAN_TABLE: [Item<u32, u16>; 16] = [
-    Item {
-        length: 2,
-        value: 0x00,
-    },
-    Item {
-        length: 3,
-        value: 0x04,
-    },
-    Item {
-        length: 3,
-        value: 0x0C,
-    },
-    Item {
-        length: 4,
-        value: 0x14,
-    },
-    Item {
-        length: 4,
-        value: 0x24,
-    },
-    Item {
-        length: 4,
-        value: 0x34,
-    },
-    Item {
-        length: 4,
-        value: 0x44,
-    },
-    Item {
-        length: 4,
-        value: 0x54,
-    },
-    Item {
-        length: 4,
-        value: 0x64,
-    },
-    Item {
-        length: 4,
-        value: 0x74,
-    },
-    Item {
-        length: 4,
-        value: 0x84,
-    },
-    Item {
-        length: 4,
-        value: 0x94,
-    },
-    Item {
-        length: 4,
-        value: 0xA4,
-    },
-    Item {
-        length: 5,
-        value: 0xB4,
-    },
-    Item {
-        length: 5,
-        value: 0xD4,
-    },
-    Item {
-        length: 5,
-        value: 0xF4,
-    },
-];
-
-#[derive(Default, Clone, Copy)]
-struct CodeItem {
-    index: u32,
-    value: u32,
-    count: u32,
-}
 
 #[derive(Clone, Copy)]
 struct SymbolTable {
@@ -172,7 +13,6 @@ struct SymbolTable {
 
 impl SymbolTable {
     pub fn new() -> SymbolTable {
-        //let mut table: [CodeItem;274] = [Default::default();274];
 
         let mut table = Self {
             indices: [0; 274],
@@ -211,21 +51,21 @@ impl SymbolTable {
     }
 
     /// Restore ascending ordering of indices array.
-    pub fn reset_indices(&mut self) -> Result<(), ()> {
-        self.indices
-            .iter_mut()
-            .enumerate()
-            .map(|(i, x)| *x = (i as u16));
-        Ok(())
-    }
+    // pub fn reset_indices(&mut self) -> Result<(), ()> {
+    //     self.indices
+    //         .iter_mut()
+    //         .enumerate()
+    //         .map(|(i, x)| *x = (i as u16));
+    //     Ok(())
+    // }
 
     /// Replace alphabet with consecutive numbers sorted by count.
     pub fn rebuild_alphabet(&mut self) -> Result<(), ()> {
         self.alphabet = [0; 274];
-        self.alphabet
-            .iter_mut()
-            .enumerate()
-            .map(|(i, n)| *n = i as u16);
+        // self.alphabet
+        //     .iter_mut()
+        //     .enumerate()
+        //     .map(|(i, n)| *n = i as u16);
 
         self.alphabet.sort_by(|&x1, &x2| {
             (self.count[x2 as usize].checked_shl(16).unwrap() + x2)
@@ -238,7 +78,13 @@ impl SymbolTable {
 pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), std::io::Error> {
     let mut bit_reader = BitReader::new(reader);
 
-    let mut huffman_table = HUFFMAN_TABLE.clone(); // symbol index table
+    const HUFFMAN_TABLE: [[u32; 16]; 2] = [
+        [2, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5],
+        [
+            0x00, 0x04, 0x0C, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74, 0x84, 0x94, 0xA4, 0xB4,
+            0xD4, 0xF4,
+        ],
+    ];
 
     let mut symbol_table = SymbolTable::new();
 
@@ -254,13 +100,12 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
         assert!(code < 128, "out of sync!");
 
         // read code item
-        let mut code_item = huffman_table[code as usize];
-        let bits = code_item.length;
-        let mut symbol_table_index = code_item.value;
+        let bits = HUFFMAN_TABLE[0][code as usize];
+        let mut symbol_table_index = HUFFMAN_TABLE[1][code as usize];
 
         if bits > 0 {
             // read more bits
-            symbol_table_index += bit_reader.read_u8(bits as u8).unwrap() as u16;
+            symbol_table_index += bit_reader.read_u8(bits as u8).unwrap() as u32;
 
             assert!(symbol_table_index < 274, "out of sync!");
         }
@@ -282,23 +127,27 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
             }
             265..=271 => {
                 let index = (symbol - 264) as usize;
-                let bits = LZ_LENGTH_TABLE[(index << 1) as usize].length;
-                let offset = LZ_LENGTH_TABLE[((index << 1) + 1) as usize].value;
+                const LZ_LENGTH_TABLE: [[u16; 8]; 2] = [
+                    [0x001, 0x002, 0x003, 0x004, 0x005, 0x006, 0x007, 0x008],
+                    [0x008, 0x00A, 0x00E, 0x016, 0x026, 0x046, 0x086, 0x106],
+                ];
+                let bits = LZ_LENGTH_TABLE[0][(index << 1) as usize];
+                let offset = LZ_LENGTH_TABLE[0][((index << 1) + 1) as usize];
                 length += offset + (bit_reader.read_u8(bits as u8).unwrap() as u16);
             }
             272 => {
                 // some sort of reset
-                symbol_table.rebuild_alphabet();
+                symbol_table.rebuild_alphabet().unwrap();
 
                 // divide all counts by two
-                symbol_table.count.iter_mut().map(|count| *count /= 2);
+                // symbol_table.count.iter_mut().map(|count| *count /= 2);
 
                 // parse new huffman table
                 let mut bits_count = 0;
                 let mut offset = 0;
                 let mut length = 0;
 
-                for i in 0..16 {
+                for _ in 0..16 {
                     while let Ok(bit) = bit_reader.read_u8(1) {
                         if bit > 0 {
                             break;
@@ -323,9 +172,12 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
         }
 
         let lz_index = bit_reader.read_u8(3).unwrap() as usize;
-        let lz_item = LZ_DISTANCE_TABLE[lz_index];
-        let bits = lz_item.length + 1;
-        let offset = lz_item.value as usize;
+        const LZ_DISTANCE_TABLE: [[u8; 8]; 2] = [
+            [0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
+            [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40],
+        ];
+        let bits = LZ_DISTANCE_TABLE[0][lz_index] + 1;
+        let offset = LZ_DISTANCE_TABLE[1][lz_index] as usize;
 
         let code = bit_reader.read_u8(8).unwrap();
         let copy_offset = code.checked_shl(bits as u32).unwrap();
@@ -342,7 +194,7 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
         let mut src_pos = output_pos - bit_and + offset.checked_shl(9).unwrap();
 
         // we need to use single-byte-copy the data case, the src and dest can be overlapped
-        for i in (0..=length).rev() {
+        for _ in (0..=length).rev() {
             output[output_pos] = output[src_pos];
             output_pos += 1;
             src_pos += 1;
@@ -355,24 +207,15 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
 #[cfg(test)]
 mod tests {
 
-    use std::io::{BufWriter, Cursor};
-
     use super::*;
-
-    struct GeneralInformation {
-        game_type: u32,
-        player_count: u32,
-        start_resources: u32,
-        map_size: u32,
-    }
 
     #[test]
     fn test_reading_from_output() {
         let mut output: [u8; 2] = [0; 2];
 
-        let mut writer = BitWriter::new(&mut output[..]);
-        writer.write_bits(&[0b1111_0000], 4);
-        writer.flush();
+        let mut writer = crate::bitwriter::BitWriter::new(&mut output[..]);
+        writer.write_bits(&[0b1111_0000], 4).unwrap();
+        writer.flush().unwrap();
 
         let mut reader = BitReader::new(&output[..]);
 
@@ -382,40 +225,40 @@ mod tests {
     #[test]
     fn test_decompress() {
         // Chunk @ 1354, size: 24; Type=1; checksum=47560, unknown1=0, unknown2=0
-        let decoded: [u8; 24] = [
-            0b0000_0001,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0100,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0010,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b1000_0000,
-            0b0000_0010,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0100_0000,
-            0b0000_0000,
-            0b0000_0000,
-            0b0000_0000,
-        ];
+        // let decoded: [u8; 24] = [
+        //     0b0000_0001,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0100,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0010,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b1000_0000,
+        //     0b0000_0010,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0100_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        //     0b0000_0000,
+        // ];
 
         // gameType: singlePlayer; playerCount: 4; startResources: medium; size: [640 x 640]; unk5: 0; unk6: 64;
-        let expect = GeneralInformation {
-            game_type: 1, // singlePlayer
-            player_count: 4,
-            start_resources: 2, // medium
-            map_size: 640,      // 640x640
-        };
+        // let expect = GeneralInformation {
+        //     game_type: 1, // singlePlayer
+        //     player_count: 4,
+        //     start_resources: 2, // medium
+        //     map_size: 640,      // 640x640
+        // };
 
         /*
         let slice_of_u8 = &[0b1000_1111];
