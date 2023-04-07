@@ -1,5 +1,4 @@
-use std::io::{self, Seek, SeekFrom, Write};
-use std::io::{prelude::*, IntoInnerError};
+use std::io::{Result, Write};
 
 pub struct BitWriter<W> {
     inner: W,
@@ -16,6 +15,10 @@ impl<W: Write> BitWriter<W> {
         }
     }
 
+    // pub fn stream_position(&self) -> io::Result<u64> {
+    //     Ok(self.inner.stream_position()? + (self.cached_bits_count as u64))
+    // }
+
     /// Bit offset from the byte at the starting position of inner.
     pub fn with_offset(offset: u8, inner: W) -> BitWriter<W> {
         BitWriter {
@@ -25,7 +28,7 @@ impl<W: Write> BitWriter<W> {
         }
     }
 
-    fn write_u8(&mut self, byte: u8, count: u8) -> io::Result<()> {
+    pub fn write_u8(&mut self, byte: u8, count: u8) -> Result<()> {
         assert!(count <= 8, "count is larger than fits inside 8 bits!");
 
         // fill cache
@@ -36,7 +39,7 @@ impl<W: Write> BitWriter<W> {
 
         if self.cached_bits_count >= 8 {
             // flush cache
-            self.inner.write(&[self.cache]);
+            self.inner.write(&[self.cache])?;
 
             // update with number of remaining bits
             self.cached_bits_count %= 8;
@@ -50,7 +53,7 @@ impl<W: Write> BitWriter<W> {
         Ok(())
     }
 
-    pub fn write_bits(&mut self, buf: &[u8], mut count: u64) -> io::Result<()> {
+    pub fn write_bits(&mut self, buf: &[u8], mut count: u64) -> Result<()> {
         assert!(
             count <= buf.len() as u64 * 8,
             "bit count exceeds input buffer capacity!"
@@ -58,30 +61,30 @@ impl<W: Write> BitWriter<W> {
 
         // write all filled bytes
         for byte in &buf[..buf.len() - 1] {
-            self.write_u8(*byte, 8);
+            self.write_u8(*byte, 8)?;
             count -= 8;
         }
 
         // write trailing
-        self.write_u8(buf[buf.len() - 1], count as u8);
+        self.write_u8(buf[buf.len() - 1], count as u8)?;
 
         Ok(())
     }
 
-    pub fn into_inner(mut self) -> Result<W, ()> {
-        self.flush();
+    pub fn into_inner(mut self) -> Result<W> {
+        self.flush()?;
         Ok(self.inner)
     }
 }
 
 impl<W: Write> Write for BitWriter<W> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+    fn write(&mut self, buf: &[u8]) -> Result<usize> {
         buf.iter().for_each(|byte| self.write_u8(*byte, 8).unwrap());
         Ok(buf.len())
     }
 
-    fn flush(&mut self) -> io::Result<()> {
-        self.inner.write(&[self.cache]);
+    fn flush(&mut self) -> Result<()> {
+        self.inner.write(&[self.cache])?;
         self.cached_bits_count = 0;
         Ok(())
     }

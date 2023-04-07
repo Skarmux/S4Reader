@@ -1,8 +1,12 @@
 use crate::bitreader::BitReader;
+use crate::bitwriter::BitWriter;
 use std::io::prelude::*;
 
 // https://www.rfc-editor.org/rfc/rfc1951
 // https://www.rfc-editor.org/rfc/rfc1952
+
+// Huffman: Frequency of bytes
+// LZ: pattern repetition
 
 #[derive(Clone, Copy)]
 struct SymbolTable {
@@ -13,7 +17,6 @@ struct SymbolTable {
 
 impl SymbolTable {
     pub fn new() -> SymbolTable {
-
         let mut table = Self {
             indices: [0; 274],
             alphabet: [0; 274],
@@ -45,7 +48,7 @@ impl SymbolTable {
     }
 
     pub fn symbol_at(&mut self, index: usize) -> u16 {
-        assert!(index < 274);
+        debug_assert!(index < 274);
         self.count[index] += 1;
         self.alphabet[index]
     }
@@ -75,67 +78,52 @@ impl SymbolTable {
     }
 }
 
-pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), std::io::Error> {
+pub fn decompress(reader: &mut impl Read) -> Result<Vec<u8>, std::io::Error> {
     let mut bit_reader = BitReader::new(reader);
 
-    const HUFFMAN_TABLE: [[u32; 16]; 2] = [
-        [2, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5],
-        [
-            0x00, 0x04, 0x0C, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74, 0x84, 0x94, 0xA4, 0xB4,
-            0xD4, 0xF4,
-        ],
-    ];
+    let mut decrypt = Vec::<u8>::new();
 
     let mut symbol_table = SymbolTable::new();
 
-    let mut output_pos: usize = 0;
-
     while let Ok(code) = bit_reader.read_u8(4) {
-        // TODO: Passiert das überhaupt?
-        if output_pos >= output.len() {
-            // reached end of output
-            break;
-        }
+        const HUFFMAN_TABLE_LENGTH: [u16; 16] = [
+            0x2, 0x3, 0x3, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x5, 0x5, 0x5,
+        ];
 
-        assert!(code < 128, "out of sync!");
+        const HUFFMAN_TABLE_VALUE: [u8; 16] = [
+            0x0, 0x4, 0xC, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74, 0x84, 0x94, 0xA4, 0xB4, 0xD4,
+            0xF4,
+        ];
 
-        // read code item
-        let bits = HUFFMAN_TABLE[0][code as usize];
-        let mut symbol_table_index = HUFFMAN_TABLE[1][code as usize];
+        let n_bits = HUFFMAN_TABLE_LENGTH[code as usize]; // number of bits to read
 
-        if bits > 0 {
-            // read more bits
-            symbol_table_index += bit_reader.read_u8(bits as u8).unwrap() as u32;
+        let byte = bit_reader.read_u8(n_bits as u8)?;
 
-            assert!(symbol_table_index < 274, "out of sync!");
-        }
+        let mut symbol_table_index = HUFFMAN_TABLE_VALUE[code as usize] as u16;
 
+        symbol_table_index += byte as u16;
+
+        assert!(
+            symbol_table_index < 274,
+            "Index out of range of the symbol table!"
+        );
+
+        // retrieve symbol from alphabet
         let symbol: u16 = symbol_table.symbol_at(symbol_table_index as usize);
+        assert!(symbol < 274, "out of sync!");
 
-        let mut length = 4;
+        let mut n_bytes: usize = 4;
 
         // execute code word
         match symbol {
             0..=255 => {
-                // not compressed
-                output[output_pos] = symbol as u8;
-                output_pos += 1;
+                // symbols within one byte are not compressed
+                decrypt.push(symbol as u8);
+
                 continue;
             }
-            256..=264 => {
-                length += symbol - 256;
-            }
-            265..=271 => {
-                let index = (symbol - 264) as usize;
-                const LZ_LENGTH_TABLE: [[u16; 8]; 2] = [
-                    [0x001, 0x002, 0x003, 0x004, 0x005, 0x006, 0x007, 0x008],
-                    [0x008, 0x00A, 0x00E, 0x016, 0x026, 0x046, 0x086, 0x106],
-                ];
-                let bits = LZ_LENGTH_TABLE[0][(index << 1) as usize];
-                let offset = LZ_LENGTH_TABLE[0][((index << 1) + 1) as usize];
-                length += offset + (bit_reader.read_u8(bits as u8).unwrap() as u16);
-            }
             272 => {
+                todo!("Not tested yet!");
                 // some sort of reset
                 symbol_table.rebuild_alphabet().unwrap();
 
@@ -143,7 +131,7 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
                 // symbol_table.count.iter_mut().map(|count| *count /= 2);
 
                 // parse new huffman table
-                let mut bits_count = 0;
+                let mut n_bits = 0;
                 let mut offset = 0;
                 let mut length = 0;
 
@@ -152,56 +140,71 @@ pub fn decompress<T: Read>(reader: &mut T, output: &mut Vec<u8>) -> Result<(), s
                         if bit > 0 {
                             break;
                         } else {
-                            bits_count += 1;
+                            n_bits += 1;
                         }
                     }
-                    symbol_table.indices[length] = bits_count;
+                    symbol_table.indices[length] = n_bits;
                     symbol_table.indices[length + 1] = offset;
                     length += 2;
-                    offset += 1 << bits_count;
+                    offset += 1 << n_bits;
                 }
+
                 continue;
             }
             273 => {
                 // end of data
-                break;
+                return Ok(decrypt);
+            }
+            256..=263 => {
+                let diff = symbol - 256;
+                n_bytes += diff as usize;
+            }
+            264..=271 => {
+                let length = (symbol - 263) as u8;
+                n_bytes += bit_reader.read_u8(length)? as usize;
+
+                const OFFSET: [u16; 8] = [0x8, 0xA, 0xE, 0x16, 0x26, 0x46, 0x86, 0x106];
+                let offset = OFFSET[(length - 1) as usize];
+                n_bytes += offset as usize;
             }
             _ => {
-                panic!("unhandled symbol: {}", symbol);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::InvalidData,
+                    "Unexcpected symbol during deflate!",
+                ));
             }
         }
 
-        let lz_index = bit_reader.read_u8(3).unwrap() as usize;
-        const LZ_DISTANCE_TABLE: [[u8; 8]; 2] = [
-            [0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06],
-            [0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40],
-        ];
-        let bits = LZ_DISTANCE_TABLE[0][lz_index] + 1;
-        let offset = LZ_DISTANCE_TABLE[1][lz_index] as usize;
+        let mut bit_value = bit_reader.read_u8(3)? as usize;
 
-        let code = bit_reader.read_u8(8).unwrap();
-        let copy_offset = code.checked_shl(bits as u32).unwrap();
+        const LZ_LENGHT: [u8; 8] = [1, 1, 2, 3, 4, 5, 6, 7];
+        let length = LZ_LENGHT[bit_value as usize];
 
-        let code = bit_reader.read_u8(bits).unwrap();
+        const LZ_DISTANCE: [usize; 8] = [0x0, 0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40];
+        let base_value = LZ_DISTANCE[bit_value as usize];
 
-        assert!(
-            (output_pos + length as usize) < output.len(),
-            "output buffer not large enough!"
-        );
+        bit_value = bit_reader.read_u8(8)? as usize;
 
-        // source position in buffer (LZ Jumping)
-        let bit_and = (code | copy_offset) as usize; // WAS IST DAS?
-        let mut src_pos = output_pos - bit_and + offset.checked_shl(9).unwrap();
+        let copy_offset = bit_value.checked_shl(length as u32).unwrap();
+
+        bit_value = bit_reader.read_u8(length)? as usize;
+
+        let bitmask = (bit_value | copy_offset) as usize;
+
+        let offset = bitmask + base_value.checked_shl(9).unwrap();
+
+        let current_index = decrypt.len() - 1;
+
+        let src_pos = current_index - offset;
 
         // we need to use single-byte-copy the data case, the src and dest can be overlapped
-        for _ in (0..=length).rev() {
-            output[output_pos] = output[src_pos];
-            output_pos += 1;
-            src_pos += 1;
+        for i in src_pos..(src_pos + n_bytes) {
+            let prev_byte = decrypt.get(i).unwrap();
+            decrypt.push(prev_byte.clone());
         }
     }
 
-    Ok(())
+    Ok(decrypt)
 }
 
 #[cfg(test)]

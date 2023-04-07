@@ -1,5 +1,4 @@
-use std::io::prelude::*;
-use std::io::{self, Read, Seek, SeekFrom};
+use std::io::{Read, Result};
 
 use byteorder::ReadBytesExt;
 
@@ -31,7 +30,7 @@ impl<R: Read> BitReader<R> {
         reader
     }
 
-    pub fn read_u8(&mut self, count: u8) -> Result<u8, ()> {
+    pub fn read_u8(&mut self, count: u8) -> Result<u8> {
         assert!(count <= 8, "Number of bits can't be more than 8!");
 
         // fill up cache

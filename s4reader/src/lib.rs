@@ -5,4 +5,4 @@ mod bitreader;
 mod bitwriter;
 mod decompress;
 
-pub mod map_file;
+pub mod map;

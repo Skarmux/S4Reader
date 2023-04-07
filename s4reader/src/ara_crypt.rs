@@ -1,4 +1,5 @@
 pub struct AraCrypt {
+    keys: [u32; 3],
     key_a: u32,
     key_b: u32,
     key_c: u32,
@@ -7,10 +8,17 @@ pub struct AraCrypt {
 impl AraCrypt {
     pub fn new(keys: [u32; 3]) -> Self {
         AraCrypt {
+            keys,
             key_a: keys[0],
             key_b: keys[1],
             key_c: keys[2],
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.key_a = self.keys[0];
+        self.key_b = self.keys[1];
+        self.key_c = self.keys[2];
     }
 
     pub fn next(&mut self) -> u32 {
