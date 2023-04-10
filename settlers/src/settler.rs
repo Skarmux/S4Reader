@@ -1,5 +1,13 @@
-enum SettlerType {
-    Carrier, // settler id 1
+#[repr(C, packed)]
+pub struct Settler {
+    pos: (u16, u16),
+    settler: SettlerType,
+    team: u8,
+}
+
+#[repr(u32)]
+pub enum SettlerType {
+    Carrier = 1,
     Digger,
     Builder,
     Woodcutter,

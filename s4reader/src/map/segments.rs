@@ -1,92 +1,78 @@
 use byteorder::{ByteOrder, LittleEndian};
 use std::convert::From;
+use std::convert::TryFrom;
 use std::str;
-
-pub struct General {
-    game_mode: u32,
-    player_count: u32,
-    start_resources: u32,
-    map_size: u32,
-}
-
-pub struct Chunk<T> {
-    segment_type: Segment,
-    encrypted_data_length: u32,
-    decrypted_data_length: u32,
-    checksum: u32,
-    data: T,
-}
-
-impl Chunk<General> {
-    pub fn game_mode(&self) -> u32 {
-        self.data.game_mode
-    }
-    pub fn player_count(&self) -> u32 {
-        self.data.player_count
-    }
-    pub fn start_resources(&self) -> u32 {
-        self.data.start_resources
-    }
-    pub fn map_size(&self) -> u32 {
-        self.data.map_size
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 pub struct SegmentHeader {
-    pub segment_type: Segment,
-    pub encrypted_data_length: u32,
-    pub decrypted_data_length: u32,
+    pub segment_type: Option<SegmentType>,
+    pub n_bytes_encrypted: u32,
+    pub n_bytes_decrypted: u32,
     pub checksum: u32,
 }
 
 impl SegmentHeader {
-    pub fn from_le_bytes(bytes: &[u8]) -> Result<Self, String> {
+    pub fn from_le_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
         let mut iter = bytes.chunks_exact(4);
         Ok(SegmentHeader {
-            segment_type: Segment::from(LittleEndian::read_u32(&iter.next().unwrap())),
-            encrypted_data_length: LittleEndian::read_u32(&iter.next().unwrap()),
-            decrypted_data_length: LittleEndian::read_u32(&iter.next().unwrap()),
-            checksum: LittleEndian::read_u32(&iter.next().unwrap()),
+            segment_type: SegmentType::try_from(LittleEndian::read_u32(
+                &iter.next().ok_or("Buffer too short!")?,
+            ))
+            .ok(),
+            n_bytes_encrypted: LittleEndian::read_u32(&iter.next().ok_or("Buffer too short!")?),
+            n_bytes_decrypted: LittleEndian::read_u32(&iter.next().ok_or("Buffer too short!")?),
+            checksum: LittleEndian::read_u32(&iter.next().ok_or("Buffer too short!")?),
         })
     }
 }
 
+#[repr(u32)]
 #[derive(PartialEq, Copy, Clone, Debug)]
-pub enum Segment {
-    GeneralInformation,
-    PlayerInformation,
-    TeamInformation,
+pub enum SegmentType {
+    // EOF,
+    MapInfo = 1,
+    PlayerInfo,
+    TeamInfo,
     Preview,
-    Objects,
+    // Unknown0,
+    Objects = 6,
     Settlers,
     Buildings,
     Stacks,
-    QuestText,
-    QuestTip,
-    Landscape,
-    Unknown,
+    VictoryCond,
+    MissionInfoDE,
+    MissionHintDE,
+    Ground,
+    MissionInfoEN,
+    MissionHintEN,
+    LuaScript,
+    // EDM = 64,
+    // Unknown1,
+    // EditorInfo,
+    // Unknown2 = 16974621
 }
 
-impl From<u32> for Segment {
-    fn from(value: u32) -> Segment {
-        match value {
-            1 => Self::GeneralInformation,
-            2 => Self::PlayerInformation,
-            3 => Self::TeamInformation,
+impl TryFrom<u32> for SegmentType {
+    type Error = &'static str;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            1 => Self::MapInfo,
+            2 => Self::PlayerInfo,
+            3 => Self::TeamInfo,
             4 => Self::Preview,
             6 => Self::Objects,
             7 => Self::Settlers,
             8 => Self::Buildings,
             9 => Self::Stacks,
-            11 => Self::QuestText,
-            12 => Self::QuestTip,
-            13 => Self::Landscape,
-            v => {
-                println!("Unknown Segment Type ID: {}", v);
-                Self::Unknown
-            }
-        }
+            10 => Self::VictoryCond,
+            11 => Self::MissionInfoDE,
+            12 => Self::MissionHintDE,
+            13 => Self::Ground,
+            14 => Self::MissionInfoEN,
+            15 => Self::MissionHintEN,
+            16 => Self::LuaScript,
+            _ => return Err("Unimplemented segment type!"),
+        })
     }
 }
 
@@ -136,16 +122,4 @@ impl Default for ResourceAmount {
     fn default() -> Self {
         ResourceAmount::Medium
     }
-}
-
-struct LandscapePosition {
-    height: u8,
-    terrain: u8,
-    subtype: u8,
-}
-
-struct Landscape {
-    positions: Vec<LandscapePosition>,
-    width: u64,
-    height: u64,
 }

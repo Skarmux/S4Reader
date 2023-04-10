@@ -1,3 +1,4 @@
+#![allow(dead_code, unused)]
 use std::io::{Result, Write};
 
 pub struct BitWriter<W> {
@@ -14,10 +15,6 @@ impl<W: Write> BitWriter<W> {
             cache: 0,
         }
     }
-
-    // pub fn stream_position(&self) -> io::Result<u64> {
-    //     Ok(self.inner.stream_position()? + (self.cached_bits_count as u64))
-    // }
 
     /// Bit offset from the byte at the starting position of inner.
     pub fn with_offset(offset: u8, inner: W) -> BitWriter<W> {
@@ -89,22 +86,6 @@ impl<W: Write> Write for BitWriter<W> {
         Ok(())
     }
 }
-
-// impl<W: Write + Seek> Seek for BitWriter<W> {
-//     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
-//         self.flush();
-//         match self.inner.seek(pos) {
-//             Ok(pos) => Ok(pos),
-//             Err(err) => Err(err)
-//         }
-//     }
-//     fn stream_position(&mut self) -> io::Result<u64> {
-//         match self.inner.stream_position() {
-//             Ok(pos) => Ok(pos + self.cached_bits_count as u64),
-//             Err(err) => Err(err)
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod test {

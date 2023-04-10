@@ -11,10 +11,9 @@ use std::str;
 
 use crate::ara_crypt::AraCrypt;
 use crate::decompress::decompress;
-use crate::settlers::map::*;
-use crate::settlers::player::Player;
+use crate::settlers::*;
 
-use super::segments::{Segment, SegmentHeader};
+use super::segments::{SegmentHeader, SegmentType};
 
 #[derive(Default, Debug)]
 pub struct Map {
@@ -22,21 +21,10 @@ pub struct Map {
     player_count: u32,
     start_resources: u32,
     map_size: u32,
-    quest_text: String,
 }
 
 impl Map {
     pub fn open<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
-        let _name = String::from(
-            path.as_ref()
-                .file_name()
-                .unwrap()
-                .to_str()
-                .unwrap()
-                .split_terminator('.')
-                .next()
-                .unwrap(),
-        );
         let file = OpenOptions::new().read(true).open(path.as_ref())?;
         Map::from_file(file)
     }
@@ -66,55 +54,105 @@ impl Map {
             ara_crypt.reset();
 
             /* interprete header segment */
-            let header = SegmentHeader::from_le_bytes(&header_buffer).unwrap();
+            if let Ok(header) = SegmentHeader::from_le_bytes(&header_buffer) {
+                let pos = reader.stream_position().unwrap(); // TODO: Should become unnecessary!
 
-            //let mut decrypt = Vec::<u8>::with_capacity(header.decrypted_data_length as usize);
-            //decrypt.resize(header.decrypted_data_length as usize, 0);
+                let mut crypt_reader = reader.take(header.n_bytes_encrypted as u64);
 
-            let pos = reader.stream_position().unwrap();
+                match header.segment_type {
+                    Some(SegmentType::MapInfo) => {
+                        println!("MapInfo:");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        map.game_type = LittleEndian::read_u32(&decrypt[..4]);
+                        map.player_count = LittleEndian::read_u32(&decrypt[4..8]);
+                        map.start_resources = LittleEndian::read_u32(&decrypt[8..12]);
+                        map.map_size = LittleEndian::read_u32(&decrypt[12..16]);
+                    }
+                    Some(SegmentType::PlayerInfo) => {
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        let mut player_info = Vec::<Player>::new();
+                        let mut chunks = decrypt.chunks_exact_mut(45);
+                        for buffer in chunks.into_iter() {
+                            let player = Player::from_le_bytes(buffer).unwrap();
+                            dbg!(&player);
+                            player_info.push(player);
+                        }
+                    }
+                    Some(SegmentType::MissionInfoDE) => {
+                        print!("MissionInfoDE: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                    }
+                    Some(SegmentType::Buildings) => {
+                        print!("Buildings: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("[OK]");
+                    }
+                    Some(SegmentType::Ground) => {
+                        print!("Ground: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("[OK]");
+                    }
+                    Some(SegmentType::LuaScript) => {
+                        println!("LuaScript: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                    }
+                    Some(SegmentType::MissionHintDE) => {
+                        print!("MissionHintDE: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                    }
+                    Some(SegmentType::MissionHintEN) => {
+                        print!("MissionHintEN: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                    }
+                    Some(SegmentType::MissionInfoEN) => {
+                        print!("MissionInfoEN: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                    }
+                    Some(SegmentType::Objects) => {
+                        print!("Objects: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("[OK]");
+                    }
+                    Some(SegmentType::Preview) => {
+                        print!("Preview: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("[OK]");
+                    }
+                    Some(SegmentType::Settlers) => {
+                        print!("Settlers: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("[OK]");
+                    }
+                    Some(SegmentType::Stacks) => {
+                        print!("Stacks: ");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        println!("[OK]");
+                    }
+                    Some(SegmentType::TeamInfo) => {
+                        println!("TeamInfo:");
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        let team_info = TeamInfo::from_le_bytes(&decrypt).unwrap();
+                        dbg!(team_info);
+                    }
+                    Some(SegmentType::VictoryCond) => {
+                        let mut decrypt = decompress(&mut crypt_reader)?;
+                        let victory_cond = VictoryCondition::from_le_bytes(&decrypt).unwrap();
+                        println!("{victory_cond:#?}");
+                    }
+                    None => {}
+                }
 
-            if header.segment_type == Segment::PlayerInformation {
-                let mut crypt_reader = reader.take(header.encrypted_data_length as u64);
-                let decrypt = decompress(&mut crypt_reader)?;
                 reader = crypt_reader.into_inner();
-                let player_a = Player::from_le_bytes(&decrypt[0..45]).unwrap();
-                let player_b = Player::from_le_bytes(&decrypt[45..90]).unwrap();
-                dbg!(player_b);
-                // assert!(
-                //     decrypt.len() == 24,
-                //     "Input slice is bigger than 4 bytes! {}",
-                //     decrypt.len()
-                // );
-                // map.game_type = LittleEndian::read_u32(&decrypt[..4]);
-                // map.player_count = LittleEndian::read_u32(&decrypt[4..8]);
-                // map.start_resources = LittleEndian::read_u32(&decrypt[8..12]);
-                // map.map_size = LittleEndian::read_u32(&decrypt[12..16]);
+
+                /* move stream position behind data content of current segment */
+                reader.seek(SeekFrom::Start(pos + header.n_bytes_encrypted as u64))?;
+                // TODO should become unneccessary
             }
-
-            // let mut crypt_reader = reader.take(header.encrypted_data_length as u64);
-            // let decrypt = decompress(&mut crypt_reader)?;
-            // reader = crypt_reader.into_inner();
-
-            // match header.segment_type {
-            //     Segment::GeneralInformation => {
-            //         assert!(
-            //             decrypt.len() == 24,
-            //             "Input slice is bigger than 4 bytes! {}",
-            //             decrypt.len()
-            //         );
-            //         map.game_type = LittleEndian::read_u32(&decrypt[..4]);
-            //         map.player_count = LittleEndian::read_u32(&decrypt[4..8]);
-            //         map.start_resources = LittleEndian::read_u32(&decrypt[8..12]);
-            //         map.map_size = LittleEndian::read_u32(&decrypt[12..16]);
-            //     }
-            //     Segment::QuestText => {
-            //         map.quest_text = str::from_utf8(&decrypt).unwrap().to_owned();
-            //     }
-            //     _ => {}
-            // }
-
-            /* move stream position behind data content of current segment */
-            reader.seek(SeekFrom::Start(pos + header.encrypted_data_length as u64))?;
         }
 
         Ok(map)

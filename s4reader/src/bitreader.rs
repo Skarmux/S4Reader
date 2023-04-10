@@ -1,6 +1,6 @@
-use std::io::{Read, Result};
-
+#![allow(dead_code, unused)]
 use byteorder::ReadBytesExt;
+use std::io::{Read, Result, Error};
 
 pub struct BitReader<R> {
     inner: R,
@@ -30,22 +30,36 @@ impl<R: Read> BitReader<R> {
         reader
     }
 
+    pub fn read_n_bits(&mut self, n: usize) -> Result<&[u8]> {
+        todo!("Not implemented")
+    }
+
     pub fn read_u8(&mut self, count: u8) -> Result<u8> {
         assert!(count <= 8, "Number of bits can't be more than 8!");
+        assert!(count > 0, "Value for count can't be zero!");
 
         // fill up cache
         if self.cached_bits_count < count {
-            let next_byte = self.inner.read_u8().unwrap() as u16;
-            self.cache |= next_byte << (8 - self.cached_bits_count);
+            let next_byte = self.inner.read_u8()?;
+
+            self.cache |= (next_byte as u16).checked_shl((8 - self.cached_bits_count) as u32).unwrap();
+
             self.cached_bits_count += 8;
         }
 
-        let result = self.cache >> (16 - count);
+        /*
+         *     cached bits > 8
+         *            |
+         * 1111_1111 1100_0000
+         */
 
-        self.cache = self.cache << count;
+        self.cache = self.cache.rotate_left(count as u32);
+        let result = self.cache as u8;
+
+        self.cache &= 0xFF00;
         self.cached_bits_count -= count;
 
-        Ok(result as u8)
+        Ok(result)
     }
 }
 

@@ -1,18 +1,14 @@
 use crate::bitreader::BitReader;
-use crate::bitwriter::BitWriter;
 use std::io::prelude::*;
 
 // https://www.rfc-editor.org/rfc/rfc1951
 // https://www.rfc-editor.org/rfc/rfc1952
 
-// Huffman: Frequency of bytes
-// LZ: pattern repetition
-
 #[derive(Clone, Copy)]
 struct SymbolTable {
-    indices: [u16; 274],
+    indices: [u32; 274],
     alphabet: [u16; 274],
-    count: [u16; 274],
+    count: [u32; 274],
 }
 
 impl SymbolTable {
@@ -41,19 +37,19 @@ impl SymbolTable {
                     value
                 }
             };
-            table.indices[table.alphabet[i] as usize] = i as u16;
+            table.indices[table.alphabet[i] as usize] = i as u32;
         }
 
         table
     }
 
     pub fn symbol_at(&mut self, index: usize) -> u16 {
-        debug_assert!(index < 274);
-        self.count[index] += 1;
-        self.alphabet[index]
+        let symbol = self.alphabet[index];
+        self.count[symbol as usize] += 1;
+        symbol
     }
 
-    /// Restore ascending ordering of indices array.
+    // Restore ascending ordering of indices array.
     // pub fn reset_indices(&mut self) -> Result<(), ()> {
     //     self.indices
     //         .iter_mut()
@@ -65,15 +61,30 @@ impl SymbolTable {
     /// Replace alphabet with consecutive numbers sorted by count.
     pub fn rebuild_alphabet(&mut self) -> Result<(), ()> {
         self.alphabet = [0; 274];
-        // self.alphabet
-        //     .iter_mut()
-        //     .enumerate()
-        //     .map(|(i, n)| *n = i as u16);
 
-        self.alphabet.sort_by(|&x1, &x2| {
-            (self.count[x2 as usize].checked_shl(16).unwrap() + x2)
-                .cmp(&(self.count[x1 as usize].checked_shl(16).unwrap() + x1))
+        // index array
+        for (i, symbol) in self.alphabet.iter_mut().enumerate() {
+            *symbol = i as u16;
+        }
+
+        // sort index by quantities
+        self.alphabet.sort_by(|x1, x2| {
+            let a = self.count[*x2 as usize].checked_shl(16).unwrap() + *x2 as u32;
+            let b = self.count[*x1 as usize].checked_shl(16).unwrap() + *x1 as u32;
+            a.cmp(&b)
         });
+
+        // divide all counts by two
+        for count in self.count.iter_mut() {
+            *count = *count / 2;
+        }
+
+        // create new index lookup
+        self.indices = [0; 274];
+        for (i, symbol) in self.alphabet.iter().enumerate() {
+            self.indices[*symbol as usize] = i as u32;
+        }
+
         Ok(())
     }
 }
@@ -85,34 +96,45 @@ pub fn decompress(reader: &mut impl Read) -> Result<Vec<u8>, std::io::Error> {
 
     let mut symbol_table = SymbolTable::new();
 
+    const HUFFMAN_TABLE: [(u8,u16); 16] = [
+        (0x2, 0x0),
+        (0x3, 0x4),
+        (0x3, 0xC),
+        (0x4, 0x14),
+        (0x4, 0x24),
+        (0x4, 0x34),
+        (0x4, 0x44),
+        (0x4, 0x54),
+        (0x4, 0x64),
+        (0x4, 0x74),
+        (0x4, 0x84),
+        (0x4, 0x94),
+        (0x4, 0xA4),
+        (0x5, 0xB4),
+        (0x5, 0xD4),
+        (0x5, 0xF4),
+    ];
+
+    let mut huffman = HUFFMAN_TABLE;
+
     while let Ok(code) = bit_reader.read_u8(4) {
-        const HUFFMAN_TABLE_LENGTH: [u16; 16] = [
-            0x2, 0x3, 0x3, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x4, 0x5, 0x5, 0x5,
-        ];
+        let (length, mut symbol_index) = huffman[code as usize];
 
-        const HUFFMAN_TABLE_VALUE: [u8; 16] = [
-            0x0, 0x4, 0xC, 0x14, 0x24, 0x34, 0x44, 0x54, 0x64, 0x74, 0x84, 0x94, 0xA4, 0xB4, 0xD4,
-            0xF4,
-        ];
-
-        let n_bits = HUFFMAN_TABLE_LENGTH[code as usize]; // number of bits to read
-
-        let byte = bit_reader.read_u8(n_bits as u8)?;
-
-        let mut symbol_table_index = HUFFMAN_TABLE_VALUE[code as usize] as u16;
-
-        symbol_table_index += byte as u16;
+        if length > 0 {
+            let byte = bit_reader.read_u8(length)?;
+            symbol_index += byte as u16;
+        }
 
         assert!(
-            symbol_table_index < 274,
+            symbol_index < 274,
             "Index out of range of the symbol table!"
         );
 
         // retrieve symbol from alphabet
-        let symbol: u16 = symbol_table.symbol_at(symbol_table_index as usize);
+        let symbol: u16 = symbol_table.symbol_at(symbol_index as usize);
         assert!(symbol < 274, "out of sync!");
 
-        let mut n_bytes: usize = 4;
+        let mut n_bytes = 4;
 
         // execute code word
         match symbol {
@@ -123,30 +145,28 @@ pub fn decompress(reader: &mut impl Read) -> Result<Vec<u8>, std::io::Error> {
                 continue;
             }
             272 => {
-                todo!("Not tested yet!");
                 // some sort of reset
                 symbol_table.rebuild_alphabet().unwrap();
 
-                // divide all counts by two
-                // symbol_table.count.iter_mut().map(|count| *count /= 2);
+                let mut tmp_length: i8 = 0;
+                let mut tmp_base = 0;
 
-                // parse new huffman table
-                let mut n_bits = 0;
-                let mut offset = 0;
-                let mut length = 0;
-
-                for _ in 0..16 {
-                    while let Ok(bit) = bit_reader.read_u8(1) {
-                        if bit > 0 {
+                for (length, symbol_index) in huffman.iter_mut() {
+                    tmp_length -= 1;
+                    // count zeroes
+                    loop {
+                        tmp_length += 1;
+                        if bit_reader.read_u8(1)? == 1 {
                             break;
-                        } else {
-                            n_bits += 1;
                         }
                     }
-                    symbol_table.indices[length] = n_bits;
-                    symbol_table.indices[length + 1] = offset;
-                    length += 2;
-                    offset += 1 << n_bits;
+
+                    *length = tmp_length as u8;
+                    *symbol_index = tmp_base;
+
+                    debug_assert!(*length <= 8, "Length is bigger than anticipated!");
+
+                    tmp_base += (1 as u16) << *length;
                 }
 
                 continue;
@@ -175,31 +195,35 @@ pub fn decompress(reader: &mut impl Read) -> Result<Vec<u8>, std::io::Error> {
             }
         }
 
-        let mut bit_value = bit_reader.read_u8(3)? as usize;
+        let bit_value = bit_reader.read_u8(3)?;
+        const LZ_DIST: [(u8, u8); 8] = [
+            (1, 0x0),
+            (1, 0x1),
+            (2, 0x2),
+            (3, 0x4),
+            (4, 0x8),
+            (5, 0x10),
+            (6, 0x20),
+            (7, 0x40),
+        ];
+        let (length, base_value) = LZ_DIST[bit_value as usize];
 
-        const LZ_LENGHT: [u8; 8] = [1, 1, 2, 3, 4, 5, 6, 7];
-        let length = LZ_LENGHT[bit_value as usize];
+        let bit_value = bit_reader.read_u8(8)?;
+        let copy_offset = (bit_value as u16).checked_shl(length as u32).unwrap();
 
-        const LZ_DISTANCE: [usize; 8] = [0x0, 0x1, 0x2, 0x4, 0x8, 0x10, 0x20, 0x40];
-        let base_value = LZ_DISTANCE[bit_value as usize];
+        let bit_value = bit_reader.read_u8(length)?;
+        let bitmask = bit_value as u16 | copy_offset;
 
-        bit_value = bit_reader.read_u8(8)? as usize;
-
-        let copy_offset = bit_value.checked_shl(length as u32).unwrap();
-
-        bit_value = bit_reader.read_u8(length)? as usize;
-
-        let bitmask = (bit_value | copy_offset) as usize;
-
-        let offset = bitmask + base_value.checked_shl(9).unwrap();
-
-        let current_index = decrypt.len() - 1;
-
-        let src_pos = current_index - offset;
+        let current_index = decrypt.len();
+        let offset = bitmask + (base_value as u16).checked_shl(9).unwrap();
+        debug_assert!(current_index >= offset as usize, "Offset out of range");
+        let src_pos = current_index - offset as usize;
 
         // we need to use single-byte-copy the data case, the src and dest can be overlapped
         for i in src_pos..(src_pos + n_bytes) {
-            let prev_byte = decrypt.get(i).unwrap();
+            let prev_byte = decrypt
+                .get(i)
+                .expect("Index points to existing position in decrypt output.");
             decrypt.push(prev_byte.clone());
         }
     }
