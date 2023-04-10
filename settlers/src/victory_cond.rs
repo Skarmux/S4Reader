@@ -47,9 +47,15 @@ struct PlayersDefeated {
 impl fmt::Debug for PlayersDefeated {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_list()
-            .entries(self.players.iter().enumerate().map(|(i, should_be_defeated)| {
-                format!("Player: {}, To be defeated: {}", i+1, should_be_defeated)
-            })).finish()
+            .entries(
+                self.players
+                    .iter()
+                    .enumerate()
+                    .map(|(i, should_be_defeated)| {
+                        format!("Player: {}, To be defeated: {}", i + 1, should_be_defeated)
+                    }),
+            )
+            .finish()
     }
 }
 
@@ -111,7 +117,10 @@ impl fmt::Debug for GroundsClaimed {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_list()
             .entries(self.grounds.iter().map(|(to_be_claimed, pos)| {
-                format!("ToBeClaimed: {}, Pos: [{}x, {}y]", to_be_claimed, pos.0, pos.1)
+                format!(
+                    "ToBeClaimed: {}, Pos: [{}x, {}y]",
+                    to_be_claimed, pos.0, pos.1
+                )
             }))
             .finish()
     }
@@ -146,9 +155,12 @@ struct TimesEndured {
 impl fmt::Debug for TimesEndured {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_list()
-            .entries(self.times_per_player.iter().enumerate().map(|(i, time)| {
-                format!("Player: {}, TimeEndured: {} minutes", i+1, time)
-            }))
+            .entries(
+                self.times_per_player
+                    .iter()
+                    .enumerate()
+                    .map(|(i, time)| format!("Player: {}, TimeEndured: {} minutes", i + 1, time)),
+            )
             .finish()
     }
 }
@@ -176,9 +188,11 @@ struct ResourcesAcquired {
 impl fmt::Debug for ResourcesAcquired {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_list()
-            .entries(self.amounts_needed.iter().map(|(amount, stack)| {
-                format!("Amount: {}, Resource: {:?}", amount, stack)
-            }))
+            .entries(
+                self.amounts_needed
+                    .iter()
+                    .map(|(amount, stack)| format!("Amount: {}, Resource: {:?}", amount, stack)),
+            )
             .finish()
     }
 }

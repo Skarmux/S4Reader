@@ -1,6 +1,6 @@
 #![allow(dead_code, unused)]
 use byteorder::ReadBytesExt;
-use std::io::{Read, Result, Error};
+use std::io::{Error, Read, Result};
 
 pub struct BitReader<R> {
     inner: R,
@@ -42,16 +42,12 @@ impl<R: Read> BitReader<R> {
         if self.cached_bits_count < count {
             let next_byte = self.inner.read_u8()?;
 
-            self.cache |= (next_byte as u16).checked_shl((8 - self.cached_bits_count) as u32).unwrap();
+            self.cache |= (next_byte as u16)
+                .checked_shl((8 - self.cached_bits_count) as u32)
+                .unwrap();
 
             self.cached_bits_count += 8;
         }
-
-        /*
-         *     cached bits > 8
-         *            |
-         * 1111_1111 1100_0000
-         */
 
         self.cache = self.cache.rotate_left(count as u32);
         let result = self.cache as u8;
