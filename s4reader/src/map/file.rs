@@ -3,6 +3,7 @@
 use byteorder::ReadBytesExt;
 use byteorder::{ByteOrder, LittleEndian};
 use std::default::Default;
+use std::ffi::CStr;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{prelude::*, BufReader, SeekFrom};
@@ -81,7 +82,8 @@ impl Map {
                     Some(SegmentType::MissionInfoDE) => {
                         print!("MissionInfoDE: ");
                         let mut decrypt = decompress(&mut crypt_reader)?;
-                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                        let text = unsafe { CStr::from_ptr(decrypt.as_ptr() as *const i8) };
+                        println!("{}", text.to_string_lossy());
                     }
                     Some(SegmentType::Buildings) => {
                         print!("Buildings: ");
@@ -91,27 +93,37 @@ impl Map {
                     Some(SegmentType::Ground) => {
                         print!("Ground: ");
                         let mut decrypt = decompress(&mut crypt_reader)?;
+                        let mut grounds = Vec::<Ground>::new();
+                        for chunk in decrypt.chunks_exact(4) {
+                            let ground = Ground::from_le_bytes(chunk).unwrap();
+                            dbg!(&ground);
+                            grounds.push(ground);
+                        }
                         println!("[OK]");
                     }
                     Some(SegmentType::LuaScript) => {
                         println!("LuaScript: ");
                         let mut decrypt = decompress(&mut crypt_reader)?;
-                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                        let text = unsafe { CStr::from_ptr(decrypt.as_ptr() as *const i8) };
+                        println!("{}", text.to_string_lossy());
                     }
                     Some(SegmentType::MissionHintDE) => {
                         print!("MissionHintDE: ");
                         let mut decrypt = decompress(&mut crypt_reader)?;
-                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                        let text = unsafe { CStr::from_ptr(decrypt.as_ptr() as *const i8) };
+                        println!("{}", text.to_string_lossy());
                     }
                     Some(SegmentType::MissionHintEN) => {
                         print!("MissionHintEN: ");
                         let mut decrypt = decompress(&mut crypt_reader)?;
-                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                        let text = unsafe { CStr::from_ptr(decrypt.as_ptr() as *const i8) };
+                        println!("{}", text.to_string_lossy());
                     }
                     Some(SegmentType::MissionInfoEN) => {
                         print!("MissionInfoEN: ");
                         let mut decrypt = decompress(&mut crypt_reader)?;
-                        println!("{}", str::from_utf8(&decrypt).unwrap());
+                        let text = unsafe { CStr::from_ptr(decrypt.as_ptr() as *const i8) };
+                        println!("{}", text.to_string_lossy());
                     }
                     Some(SegmentType::Objects) => {
                         print!("Objects: ");

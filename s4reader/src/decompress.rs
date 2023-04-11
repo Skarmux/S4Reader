@@ -146,7 +146,6 @@ pub fn decompress(reader: &mut impl Read) -> Result<Vec<u8>, std::io::Error> {
                 continue;
             }
             273 => {
-                // end of data
                 return Ok(decrypt);
             }
             _ => {

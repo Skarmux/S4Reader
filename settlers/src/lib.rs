@@ -1,6 +1,9 @@
 mod building;
 pub use building::*;
 
+mod ground;
+pub use ground::*;
+
 mod player;
 pub use player::*;
 
