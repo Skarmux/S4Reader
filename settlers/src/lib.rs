@@ -4,8 +4,17 @@ pub use building::*;
 mod ground;
 pub use ground::*;
 
+mod info;
+pub use info::*;
+
+mod object;
+pub use object::*;
+
 mod player;
 pub use player::*;
+
+mod preview;
+pub use preview::*;
 
 mod settler;
 pub use settler::*;

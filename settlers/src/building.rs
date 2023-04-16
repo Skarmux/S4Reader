@@ -1,5 +1,6 @@
 use num_enum::TryFromPrimitive;
 
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct Building {
     pos: (u16, u16),

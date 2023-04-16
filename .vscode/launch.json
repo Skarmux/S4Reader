@@ -7,15 +7,15 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug executable 's4reader'",
+            "name": "Debug executable 'game'",
             "cargo": {
                 "args": [
                     "build",
-                    "--bin=s4reader",
-                    "--package=s4reader"
+                    "--bin=game",
+                    "--package=game"
                 ],
                 "filter": {
-                    "name": "s4reader",
+                    "name": "game",
                     "kind": "bin"
                 }
             },
@@ -25,16 +25,16 @@
         {
             "type": "lldb",
             "request": "launch",
-            "name": "Debug unit tests in executable 's4reader'",
+            "name": "Debug unit tests in executable 'game'",
             "cargo": {
                 "args": [
                     "test",
                     "--no-run",
-                    "--bin=s4reader",
-                    "--package=s4reader"
+                    "--bin=game",
+                    "--package=game"
                 ],
                 "filter": {
-                    "name": "s4reader",
+                    "name": "game",
                     "kind": "bin"
                 }
             },

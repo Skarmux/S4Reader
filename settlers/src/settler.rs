@@ -1,3 +1,4 @@
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct Settler {
     pos: (u16, u16),
@@ -5,6 +6,7 @@ pub struct Settler {
     team: u8,
 }
 
+#[derive(Clone, Copy, Debug)]
 #[repr(u32)]
 pub enum SettlerType {
     Carrier = 1,

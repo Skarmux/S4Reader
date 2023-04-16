@@ -1,5 +1,6 @@
 use num_enum::TryFromPrimitive;
 
+#[derive(Debug)]
 #[repr(C, packed)]
 pub struct Stack {
     pos: (u16, u16),

@@ -2,6 +2,7 @@ use byteorder::{ByteOrder, LittleEndian};
 use std::convert::From;
 use std::convert::TryFrom;
 use std::str;
+use std::io;
 
 #[derive(Copy, Clone, Debug)]
 pub struct SegmentHeader {
@@ -12,16 +13,13 @@ pub struct SegmentHeader {
 }
 
 impl SegmentHeader {
-    pub fn from_le_bytes(bytes: &[u8]) -> Result<Self, &'static str> {
-        let mut iter = bytes.chunks_exact(4);
+    /// NOTE: usage of bytes 16..24 is unknown
+    pub fn from_le_bytes(bytes: &[u8;24]) -> io::Result<Self> {
         Ok(SegmentHeader {
-            segment_type: SegmentType::try_from(LittleEndian::read_u32(
-                &iter.next().ok_or("Buffer too short!")?,
-            ))
-            .ok(),
-            n_bytes_encrypted: LittleEndian::read_u32(&iter.next().ok_or("Buffer too short!")?),
-            n_bytes_decrypted: LittleEndian::read_u32(&iter.next().ok_or("Buffer too short!")?),
-            checksum: LittleEndian::read_u32(&iter.next().ok_or("Buffer too short!")?),
+            segment_type: SegmentType::try_from(LittleEndian::read_u32(&bytes[0..4])).ok(),
+            n_bytes_encrypted: LittleEndian::read_u32(&bytes[4..8]),
+            n_bytes_decrypted: LittleEndian::read_u32(&bytes[8..12]),
+            checksum: LittleEndian::read_u32(&bytes[12..16]),
         })
     }
 }

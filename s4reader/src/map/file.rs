@@ -5,8 +5,10 @@ use byteorder::{ByteOrder, LittleEndian};
 use std::default::Default;
 use std::ffi::CStr;
 use std::fmt;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
+use std::fs::OpenOptions;
 use std::io::{prelude::*, BufReader, SeekFrom};
+use std::io;
 use std::path::Path;
 use std::str;
 
@@ -14,7 +16,68 @@ use crate::ara_crypt::AraCrypt;
 use crate::decompress::decompress;
 use crate::settlers::*;
 
-use super::segments::{SegmentHeader, SegmentType};
+use std::collections::HashSet;
+
+use super::segments::{SegmentHeader, SegmentType, GameMode, ResourceAmount};
+
+#[derive(Debug)]
+pub struct GameMap {
+    checksum: u32,
+    version: u32,
+    map: Info,
+    // player: Player,
+    // team: TeamInfo,
+    // preview: Box<Preview>,
+    // objects: Vec<Object>,
+    // settlers: Vec<Settler>,
+    // buildings: Vec<Building>,
+    // stacks: Vec<Stack>,
+    // victory_conditions: VictoryCondition,
+    // mission_text_german: String,
+    // mission_hint_german: String,
+    // landscape: Vec<Ground>,
+    // mission_text_english: String,
+    // mission_hint_english: String,
+    // lua_script: String,
+}
+
+impl GameMap {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+        let file = OpenOptions::new().read(true).open(path.as_ref())?;
+        let mut reader = BufReader::<File>::new(file);
+
+        Ok( GameMap { 
+            checksum: reader.read_u32::<LittleEndian>().unwrap(), 
+            version: reader.read_u32::<LittleEndian>().unwrap(), 
+            map: GameMap::read_info(&mut reader)?,
+        })
+    }
+    fn read_info(reader: &mut BufReader<File>) -> io::Result<Info> {
+        while let Ok(header) = GameMap::read_header(reader) {
+            dbg!(&header);
+            if Some(SegmentType::MapInfo) == header.segment_type {
+                let mut crypt_reader = reader.take(header.n_bytes_encrypted as u64);
+                let mut decrypt = decompress(&mut crypt_reader)?;
+                return Ok(Info::from_le_bytes(&decrypt)?);
+            } else {
+                reader.seek_relative(header.n_bytes_encrypted as i64);
+            }
+        }
+        Err(io::Error::new(io::ErrorKind::InvalidData, "header segment for map info not found"))
+    }
+    fn read_header(reader: &mut BufReader<File>) -> io::Result<SegmentHeader> {
+        let mut header_buffer = [0; 24];
+
+        reader.read_exact(&mut header_buffer)?;
+
+        let mut ara_crypt = AraCrypt::new([0x30313233, 0x34353637, 0x38393031]);
+        header_buffer
+                .iter_mut()
+                .for_each(|x| *x = *x ^ ara_crypt.next() as u8);
+
+        Ok(SegmentHeader::from_le_bytes(&header_buffer)?)
+    }
+}
 
 #[derive(Default, Debug)]
 pub struct Map {
