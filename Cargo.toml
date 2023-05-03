@@ -1,7 +1,6 @@
 [workspace]
-resolver = "2" # Important! wgpu/Bevy needs this!
+resolver = "2"
 members = [
+    "s4",
     "game",
-    "settlers",
-    "s4reader"
 ]

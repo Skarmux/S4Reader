@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.10"
-settlers = { path = "../settlers" }
-s4reader = { path = "../s4reader" }
+rand = "0.8"
+s4 = { path = "../s4" }
 
 # Enable a small amount of optimization in debug mode
 [profile.dev]
