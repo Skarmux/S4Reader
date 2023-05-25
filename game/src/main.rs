@@ -1,9 +1,8 @@
 use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy::sprite::MaterialMesh2dBundle;
 use bevy::window::PrimaryWindow;
 use s4::ground::{Ground, GroundType};
-use rand::prelude::*;
+//use rand::prelude::*;
 use bevy::input::mouse::*;
 use bevy::render::mesh::*;
 
@@ -18,6 +17,7 @@ fn main() {
     .add_system(settler_movement)
     .add_system(camera_zoom)
     .add_system(camera_move)
+    .add_system(place_star_on_click)
     .add_event::<MouseWheel>()
     .run();
 }
@@ -28,7 +28,6 @@ pub struct Map {
     pub height: usize,
     pub grid: Vec<Vec<s4::ground::Ground>>
 }
-
 impl Map {
     fn new(width: usize, height: usize) -> Self {
         let mut grid = Vec::new();
@@ -51,10 +50,13 @@ impl Map {
 pub struct Settler;
 
 #[derive(Component)]
+pub struct Star;
+
+#[derive(Component)]
 pub struct Health(u8);
 
 #[derive(Component)]
-pub struct Camera;
+pub struct MainCamera;
 
 fn create_triangle() -> Mesh {
     let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
@@ -91,7 +93,6 @@ pub fn spawn_player(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
 ) {
-    println!("spawn_player");
     commands.spawn(
         (
             SpriteBundle {
@@ -109,8 +110,6 @@ pub fn spawn_settlers(
     asset_server: Res<AssetServer>,
     map: Res<Map>,
 ) {
-    println!("spawn_settlers");
-
     //let mut rng = rand::thread_rng();
 
     for row in 0..map.height {
@@ -137,7 +136,7 @@ pub fn spawn_camera(
     let window = window_query.get_single().unwrap();
 
     commands.spawn((
-        Camera,
+        MainCamera,
         Camera2dBundle {
         transform: Transform::from_xyz(window.width() / 2.0, window.height() / 2.0, 0.0),
         ..default()
@@ -148,7 +147,7 @@ pub fn spawn_camera(
 pub fn camera_move(
     mut motion_evr: EventReader<MouseMotion>,
     mouse_buttons: Res<Input<MouseButton>>,
-    mut camera_query: Query<&mut Transform, With<Camera>>,
+    mut camera_query: Query<&mut Transform, With<MainCamera>>,
 ) {
     if mouse_buttons.pressed(MouseButton::Right) {
         if let Ok(mut transform) = camera_query.get_single_mut() {
@@ -162,7 +161,7 @@ pub fn camera_move(
 
 pub fn camera_zoom(
     mut scroll_evr: EventReader<MouseWheel>,
-    mut camera_query: Query<&mut OrthographicProjection, With<Camera>>,
+    mut camera_query: Query<&mut OrthographicProjection, With<MainCamera>>,
 ) {
     let mut projection = camera_query.single_mut();
 
@@ -188,6 +187,50 @@ pub fn camera_zoom(
 }
 
 pub const MOVEMENT_SPEED: f32 = 500.0;
+
+fn snap_to_grid(x: f32, y: f32, map: Res<Map>) {
+    
+}
+
+pub fn place_star_on_click(
+    mut commands: Commands,
+    window_query: Query<&Window, With<PrimaryWindow>>,
+    camera_query: Query<(&Camera, &GlobalTransform), With<MainCamera>>,
+    mouse_buttons: Res<Input<MouseButton>>,
+    asset_server: Res<AssetServer>,
+    map: Res<Map>,
+) {
+    if mouse_buttons.just_pressed(MouseButton::Left) {
+        // get the camera info and transform
+        // assuming there is exactly one main camera entity, so query::single() is OK
+        let (camera, camera_transform) = camera_query.single();
+
+        // get the window that the camera is displaying to (or the primary window)
+        let window = window_query.get_single().unwrap();
+
+        // check if the cursor is inside the window and get its position
+        // then, ask bevy to convert into world coordinates, and truncate to discard Z
+        if let Some(world_position) = window.cursor_position()
+            .and_then(|cursor| camera.viewport_to_world(camera_transform, cursor))
+            .map(|ray| ray.origin.truncate())
+        {
+            eprintln!("World coords: {}/{}", world_position.x, world_position.y);
+
+            if world_position.x < (map.width as f32 * 64.0) && world_position.y < (map.height as f32 * 64.0) {
+                eprintln!("New Star");
+                commands.spawn((
+                    SpriteBundle {
+                        transform: Transform::from_xyz( world_position.x,  world_position.y, -1.0),
+                        texture: asset_server.load("sprites/star.png"),
+                        ..default()
+                    },
+                    Star
+                ));
+            }
+        }
+    }
+    
+}
 
 pub fn settler_movement(
     keyboard_input: Res<Input<KeyCode>>,
@@ -217,37 +260,3 @@ pub fn settler_movement(
         transform.translation += direction * MOVEMENT_SPEED * time.delta_seconds();
     }
 }
-
-fn setup_sprite_thing(mut commands: Commands, mut textures: ResMut<Assets<Image>>) {
-    // let mut preview = settlers::Preview {
-    //     data: Vec::<u8>::new(),
-    // };
-
-    let (width, height) = (256, 256);
-    let mut bytes = Vec::with_capacity(width * height * 4);
-    for _y in 0..height {
-        for _x in 0..width {
-            bytes.push(0xff);
-            bytes.push(0x00);
-            bytes.push(0x00);
-            bytes.push(0xff);
-        }
-    }
-
-    let texture = Image::new(
-        Extent3d { width: width as u32, height: height as u32, depth_or_array_layers: 1 },
-        TextureDimension::D2,
-        bytes,
-        TextureFormat::Rgba8Unorm,
-    );
-
-    let texture_handle = textures.add(texture);
-    //asset_server.add_texture(texture_handle);
-
-    commands.spawn(Camera2dBundle::default());
-    commands.spawn(SpriteBundle {
-        texture: texture_handle,
-        ..Default::default()
-    });
-}
-

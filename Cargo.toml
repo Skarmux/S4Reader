@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "s4",
     "game",
+    "path",
 ]
