@@ -1,2 +1,16 @@
+# Rust
 /target
 /Cargo.lock
+
+# Any data belonging to Ubisofts IP must not be committed
+/data
+
+# Devenv
+.devenv*
+devenv.local.nix
+
+# direnv
+.direnv
+
+# pre-commit
+.pre-commit-config.yaml
