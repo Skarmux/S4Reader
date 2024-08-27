@@ -1,4 +1,3 @@
-
 use std::fs::File;
 use std::fs::OpenOptions;
 use std::io;
@@ -51,10 +50,10 @@ impl GameMap {
             //dbg!(&header);
             if Some(SegmentType::MapInfo) == header.segment_type {
                 let mut crypt_reader = reader.take(header.n_bytes_encrypted as u64);
-                let mut decrypt = decompress(&mut crypt_reader)?;
-                return Ok(Info::from_le_bytes(&decrypt)?);
+                let decrypt = decompress(&mut crypt_reader)?;
+                return Info::from_le_bytes(&decrypt)
             } else {
-                reader.seek_relative(header.n_bytes_encrypted as i64);
+                let _ = reader.seek_relative(header.n_bytes_encrypted as i64);
             }
         }
         Err(io::Error::new(
@@ -136,4 +135,16 @@ pub enum ResourceAmount {
     Low = 0,
     Medium = 1,
     High = 2,
+}
+
+#[cfg(test)]
+mod tests {
+
+    use super::*;
+
+    #[test]
+    fn loading_map_from_file() {
+        let file = GameMap::from_file("data/Settlers 4 Gold/Map/Singleplayer/Aeneas.map");
+        assert!(file.is_ok());
+    }
 }

@@ -1,3 +1,6 @@
+/// ara crypt
+/// implements a liner feedback shift register (LFSR) encryption
+
 pub struct AraCrypt {
     keys: [u32; 3],
     key_a: u32,

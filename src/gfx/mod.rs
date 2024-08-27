@@ -97,9 +97,10 @@ pub enum Kind {
     AddOnSolidEffect = 37,
 }
 
-pub fn load(kind: Kind) -> io::Result<Resource> {
+pub fn load(_kind: Kind) -> io::Result<Resource> {
 
-    let archive = Archive::new("c:\\Program Files (x86)\\GOG Galaxy\\Games\\Settlers 4 Gold\\gfx.lib").unwrap();
+    // gfx.lib stores a register of all available graphical assets
+    let _archive = Archive::new("g:\\GOG\\Settlers 4 Gold\\gfx.lib").unwrap();
 
     todo!()
 }
@@ -111,6 +112,6 @@ mod tests {
 
     #[test]
     fn test_load() {
-        load(Kind::Settler(Tribe::Roman));
+        let _ = load(Kind::Settler(Tribe::Roman));
     }
 }

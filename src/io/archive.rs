@@ -12,12 +12,18 @@ use byteorder::{ReadBytesExt, LE};
 #[derive(Debug)]
 struct FileDescriptor {
     offset: u32,
+    /// Length in bytes
     size: u32,
+    /// Length in bytes after decompression
     size_decrypt: u32,
+    /// Filesystem path to file
     path: PathBuf,
+    /// Wether the blob is compressed
     compressed: bool,
 }
 
+/// Archive manages access, and loading of graphical assets
+/// from the given installation root of the game.
 #[derive(Debug)]
 pub struct Archive {
     path: PathBuf,
@@ -45,11 +51,11 @@ impl Archive {
 
         // path name list [path name list length]
         let mut buf = vec![0; path_list_length as usize];
-        reader.read(&mut buf)?;
+        reader.read_exact(&mut buf)?;
         let path_names = String::from_utf8(buf).expect("valid utf-8 string");
         let paths: Vec<PathBuf> = path_names
             .split_terminator('\0')
-            .map(|s| PathBuf::from(s) )
+            .map(PathBuf::from)
             .collect();
         if paths.len() != path_count {
             return Err(io::Error::new(io::ErrorKind::InvalidData, "invalid path data"));
@@ -57,7 +63,7 @@ impl Archive {
 
         // file name list [file name list length]
         let mut buf = vec![0; file_list_length as usize];
-        reader.read(&mut buf)?;
+        reader.read_exact(&mut buf)?;
         let file_names = String::from_utf8(buf).expect("valid utf-8 string");
         let files: Vec<OsString> = file_names
             .split_terminator('\0')
@@ -103,6 +109,7 @@ impl Archive {
 
         Ok(loader)
     }
+
     pub fn open<P: AsRef<Path>>(&self, path: P) -> io::Result<Option<Vec<u8>>> {
         let virtual_file = self.archive.iter().find(|f| f.path == path.as_ref());
 
@@ -135,12 +142,11 @@ mod tests {
 
     #[test]
     fn initialize() {
+        // TODO: Need a copyright free variant of all asset types
         let install_root: PathBuf = [
-            "c:\\",
-            "Program Files (x86)",
-            "GOG Galaxy",
-            "Games",
+            "data",
             "Settlers 4 Gold",
+            "gfx.lib"
         ]
         .iter()
         .collect();
