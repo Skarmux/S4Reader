@@ -64,3 +64,17 @@ impl Graphic {
         Graphic::from_reader(reader)
     }
 }
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use std::env;
+
+    #[test]
+    fn load_file() {
+        let install_root = env::var("INSTALL_ROOT").unwrap();
+        let file_path = format!("{0}/{1}",install_root, "Gfx/0.gfx");
+        let gfx_file = Graphic::from_file(file_path).unwrap();
+    }
+}

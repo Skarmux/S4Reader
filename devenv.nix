@@ -1,11 +1,10 @@
-{ pkgs, lib, config, inputs, ... }:
-
+{ pkgs, ... }:
 {
   # https://devenv.sh/basics/
-  env.GREET = "devenv";
+  env.INSTALL_ROOT = "data/";
 
   # https://devenv.sh/packages/
-  packages = [ pkgs.git ];
+  packages = with pkgs; [ git ];
 
   # https://devenv.sh/languages/
   languages.rust.enable = true;
@@ -17,14 +16,14 @@
   # services.postgres.enable = true;
 
   # https://devenv.sh/scripts/
-  scripts.hello.exec = ''
-    echo hello from $GREET
-  '';
+  # scripts.hello.exec = ''
+  #   echo hello from $GREET
+  # '';
 
-  enterShell = ''
-    hello
-    git --version
-  '';
+  # enterShell = ''
+  #   hello
+  #   git --version
+  # '';
 
   # https://devenv.sh/tests/
   enterTest = ''
