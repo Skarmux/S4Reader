@@ -1,0 +1,5 @@
+package s4:resources@0.1.0;
+
+world resources {
+    import s4:map/load;
+}

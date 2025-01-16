@@ -1,9 +1,5 @@
 # Rust
-/target
-/Cargo.lock
-
-# Any data belonging to Ubisofts IP must not be committed
-/data
+target
 
 # Devenv
 .devenv*

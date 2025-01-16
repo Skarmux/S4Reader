@@ -1,0 +1,32 @@
+package s4:gfx@0.1.0;
+
+interface load {
+
+    record image {
+        dimensions: tuple<u16,u16>,
+        padding-top: u16,
+        padding-left: u16,
+        kind: image-kind,
+        meta: unknown,
+        data: list<u8>
+    }
+
+    flags unknown {
+        todo,
+    }
+
+    enum image-kind {
+        unknown
+    }
+
+    type palette = list<u16>;
+    type image-indices = list<u32>;
+    type direction-indices = list<u32>;
+    type palette-indices = list<u32>;
+    type job-indices = list<u32>;
+
+}
+
+world gfx {
+    export load;
+}

@@ -1,0 +1,9 @@
+package s4:encryption@0.1.0;
+
+interface decryption {
+    decrypt: func(input: list<u8>) -> list<u8>;
+}
+
+world encryption {
+    export decryption;
+}

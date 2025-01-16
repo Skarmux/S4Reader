@@ -1,0 +1,339 @@
+package s4:files@0.1.0;
+
+interface load {
+
+    record ware-stack {
+        size: u8,
+        kind: ware-kind,
+    }
+
+    enum ware-kind {
+        agave,
+        ammo,
+        armor,
+        axe,
+        battle-axe,
+        blowgun,
+        board,
+        bow,
+        bread,
+        coal,
+        fish,
+        flour,
+        goat,
+        gold,
+        gold-ore,
+        grain,
+        gunpowder,
+        hammer,
+        honey,
+        iron,
+        iron-ore,
+        log,
+        mead,
+        meat,
+        pickaxe,
+        pig,
+        fishing-rod,
+        saw,
+        scythe,
+        sheep,
+        shovel,
+        stone,
+        sulfur,
+        sword,
+        tequila,
+        water,
+        wine,
+        backpack-catapult,
+        goose,
+        explosive-arrow,
+        sunflower-oil,
+        sunflower
+    }
+
+    record settler {
+        position: tuple<u16,u16>,
+        kind: settler-kind,
+        team-id: u8
+    }
+
+    enum settler-kind {
+        carrier,
+        planer,
+        builder,
+        woodcutter,
+        stonecutter,
+        forester,
+        grain-farmer,
+        animal-farmer,
+        fisher,
+        waterworker,
+        hunter,
+        sawmill-worker,
+        smelter,
+        mineworker,
+        smith,
+        miller,
+        baker,
+        butcher,
+        shipyard-worker,
+        healer,
+        charcoal-maker,
+        ammo-maker,
+        vehicle-maker,
+        vinter,
+        beekeeper,
+        meadmaker,
+        agave-farmer,
+        tequila-maker,
+        level1-swordsman,
+        level2-swordsman,
+        level3-swordsman,
+        level1-archer,
+        level2-archer,
+        level3-archer,
+        level1-medic,
+        level2-medic,
+        level3-medic,
+        level1-axe-warrior,
+        level2-axe-warrior,
+        level3-axe-warrior,
+        level1-blowgun,
+        level2-blowgun,
+        level3-blowgun,
+        squad-leader,
+        priest,
+        saboteur,
+        pioneer,
+        thief,
+        geologist,
+        gardener,
+        landscaper,
+        dark-gardener,
+        mushroom-farmer,
+        shaman,
+        dark-settler,
+        temple-servant,
+        level1-angel,
+        level2-angel,
+        level3-angel,
+        donkey,
+        level1-backpack-catapultist,
+        level2-backpack-catapultist,
+        level3-backpack-catapultist,
+        sunflower-farmer,
+        sunoil-maker,
+        manacopter-master
+    }
+
+    enum player-kind {
+        human,
+        computer
+    }
+
+    record team-player {
+        team-id: u8,
+        kind: option<player-kind>
+    }
+
+    record building {
+        position: tuple<u16,u16>,
+        kind: building-kind,
+        team-id: u8,
+        is-occupied: bool,
+        level1-swordsmen: u8,
+        level2-swordsmen: u8,
+        level3-swordsmen: u8,
+        level1-archers: u8,
+        level2-archers: u8,
+        level3-archers: u8,
+    }
+
+    enum building-kind {
+        woodcutters-hut,
+        foresters-hut,
+        sawmill,
+        stonecutters-hut,
+        waterworkers-hut,
+        fishers-hut,
+        hunters-hut,
+        slaughterhouse,
+        grain-mill,
+        bakery,
+        grain-farm,
+        sheep-ranch,
+        donkey-ranch,
+        stone-mine,
+        iron-mine,
+        gold-mine,
+        coal-mine,
+        sulfur-mine,
+        gold-smelting-works,
+        iron-smelting-works,
+        toolsmiths-works,
+        weaponsmiths-works,
+        vehicle-hall,
+        barracks,
+        charcoal-maker,
+        training-center,
+        healers-quarters,
+        ammo-makers-works,
+        gunpowder-makers-hut,
+        landscape-makers-hut,
+        shipyard,
+        harbor,
+        marketplace,
+        storage-area,
+        vineyard,
+        agave-farmers-hut,
+        tequila-makers-hut,
+        beekeepers-hut,
+        meadmakers-hut,
+        small-residence,
+        medium-residence,
+        large-residence,
+        small-temple,
+        large-temple,
+        lookout-tower,
+        small-tower,
+        large-tower,
+        castle,
+        dark-mushroom-farm,
+        dark-temple,
+        dark-fortress,
+        harbor-a,
+        harbor-b,
+        harbor-c,
+        harbor-d,
+        harbor-e,
+        harbor-f,
+        shipyard-a,
+        shipyard-b,
+        shipyard-c,
+        shipyard-d,
+        shipyard-e,
+        shipyard-f,
+        bust,
+        monument,
+        standart,
+        obelisk,
+        bench,
+        arched-gateway,
+        flower-kind1,
+        tombstone,
+        stone-plaque,
+        vase,
+        knight,
+        flower-kind2,
+        shipyard-g,
+        shipyard-h,
+        harbor-g,
+        harbor-h,
+        manacopter-hall,
+        sunflower-oil-makers-hut,
+        sunflower-farm,
+    }
+
+    enum gamemode { versus, single, coop }
+
+    enum resource-richness { low, medium, high }
+
+    enum tribe { roman, mayan, viking, dark, trojan }
+
+    record ground {
+        elevation: u8,
+        kind: ground-kind, 
+        meta: ground-meta,
+    }
+
+    flags ground-meta {
+        unknown
+    }
+
+    enum ground-kind {
+        water-level1,
+        water-level2,
+        water-level3,
+        water-level4,
+        water-level5,
+        water-level6,
+        water-level7,
+        water-level8,
+        water-beach,
+        grass,
+        grass-mountain,
+        grass-island,
+        grass-desert,
+        grass-swamp,
+        grass-mud,
+        grass-dark,
+        grass-weird,
+        grass-dusty,
+        grass-pavement,
+        mountain,
+        mountain-grass,
+        mountain-snow,
+        beach,
+        desert,
+        desert-grass,
+        swamp,
+        swamp-grass,
+        river-width1,
+        river-width2,
+        river-width3,
+        river-width4,
+        snow,
+        snow-mountain,
+        mud,
+        mud-grass,
+        glitched,
+    }
+
+    record info {
+        gamemode: gamemode,
+        player-limit: u8,
+        resource-richness: option<resource-richness>,
+        map-size: u32,
+    }
+
+    record player {
+        position: tuple<u16,u16>,
+        tribe: option<tribe>,
+        name: string,
+    }
+
+    record team {
+        name: string,
+        players: list<team-player>,
+    }
+
+    record victory-conditions {
+        players-to-defeat: option<list<bool>>,
+        buildings-to-destroy: option<list<building>>,
+        ground-to-claim: option<list<tuple<bool,tuple<u16,u16>>>>,
+        seconds-to-survive: option<list<u16>>,
+        resources-to-gather: option<list<tuple<u16,ware-kind>>>
+    }
+
+    record map {
+        nature: list<u8>,
+        settlers: list<settler>,
+        buildings: list<building>,
+        wares: list<ware-stack>,
+        victory-conditions: victory-conditions,
+        mission-description: string,
+        mission-hint: string,
+        lua-script: string,
+        landscape: list<ground>
+    }
+
+    load-map: func(path: string) -> result<map,string>;
+    load-map-info: func(path: string) -> result<info,string>;
+}
+
+world files {
+    export load;
+    import s4:compression/decompress@0.1.0;
+    import s4:encryption/decryption@0.1.0;
+}

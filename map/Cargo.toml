@@ -1,0 +1,24 @@
+[package]
+name = "map"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+byteorder = "1.5.0"
+wit-bindgen-rt = { version = "0.37.0", features = ["bitflags"] }
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+package = "s4:files"
+
+[package.metadata.component.target.dependencies]
+"s4:compression" = { path = "../wit/compression" }
+"s4:encryption" = { path = "../wit/encryption" }
+
+[package.metadata.component.target]
+path = "../wit/map"
+world = "files"
+
+[package.metadata.component.dependencies]

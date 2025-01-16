@@ -1,0 +1,21 @@
+[package]
+name = "compression"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wit-bindgen-rt = { version = "0.37.0", features = ["bitflags"] }
+byteorder = "1.4"
+anyhow = "1.0.95"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+package = "s4:compression"
+
+[package.metadata.component.target]
+path = "../wit/compression"
+world = "compression"
+
+[package.metadata.component.dependencies]

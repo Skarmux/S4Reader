@@ -1,0 +1,9 @@
+package s4:compression@0.1.0;
+
+interface decompress {
+    decompress: func(input: list<u8>) -> result<list<u8>,string>;
+}
+
+world compression {
+    export decompress;
+}

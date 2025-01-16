@@ -1,6 +1,10 @@
 {
-    "rust-analyzer.linkedProjects": [
-        ".\\game\\Cargo.toml",
-        ".\\game\\Cargo.toml"
+    "rust-analyzer.check.overrideCommand": [
+        "cargo",
+        "component",
+        "check",
+        "--workspace",
+        "--all-targets",
+        "--message-format=json"
     ]
 }
